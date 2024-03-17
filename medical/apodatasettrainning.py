@@ -1,0 +1,454 @@
+# %% [code]
+# %% [code]
+# %% [code]
+# %% [code]
+# %% [code]
+# !pip install scipy scikit-image torch torchvision pathlib wandb segmentation-models-pytorch
+# !pip install wandb
+# !pip install wandb --upgrade
+
+import os
+import random
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+plt.style.use("ggplot")
+
+
+import torch
+import torch.nn as nn
+from torchvision import models, transforms
+from torchvision.transforms import v2
+from torch.nn.functional import relu, pad
+from torch.utils.data import Dataset, DataLoader, random_split
+
+from PIL import Image
+from typing import Tuple
+from pathlib import Path
+
+import torch
+from torch import nn, Tensor
+import torch.nn.functional as F
+
+# 添加训练和测试函数
+from tqdm import tqdm
+import wandb
+import logging
+import time
+import torch.optim as optim
+import segmentation_models_pytorch as smp
+
+
+
+# TODO: image和mask名称不一样时跳过
+class APODataSet(Dataset):
+    # 格式不对的异常数据
+    def __init__(self, img_dir, mask_dir: str, size) -> None:
+        # 获取所有图片路径
+        img_paths = list(Path(img_dir).glob("*"))
+        mask_paths = list(Path(mask_dir).glob("*"))
+        self.images = []
+        self.masks = []
+        for img_idx in range(len(img_paths)):
+            img_path = img_paths[img_idx]
+            img = self.load_image(img_path)
+            num_channels = len(img.getbands())
+            if num_channels != 3:
+                continue
+            
+            mask_path = mask_paths[img_idx]
+            self.images.append(img_path)
+            self.masks.append(mask_path)
+            
+        self.transform = transforms.Compose([ transforms.Resize(size), transforms.ToTensor()])
+
+    def load_image(self, path) -> Image.Image:
+        "Opens an image via a path and returns it."
+        return Image.open(path)
+    
+    #  重写 __len__() 方法 (optional but recommended for subclasses of torch.utils.data.Dataset)
+    def __len__(self) -> int:
+        "Returns the total number of samples."
+        return len(self.images)
+    # 重写 __getitem__() 方法 (required for subclasses of torch.utils.data.Dataset)
+    def __getitem__(self, index: int) -> Tuple[torch.Tensor, torch.Tensor]:
+        "Returns one sample of data, image and mask (X, y)."
+        orig_img = self.load_image(self.images[index])
+        mask_img = self.load_image(self.masks[index])
+
+        orig_img = self.transform(orig_img)
+        mask_img = self.transform(mask_img)
+        
+        
+        mask_img = torch.where(mask_img>0.5,torch.ones_like(mask_img),torch.zeros_like(mask_img))
+        
+        
+        return orig_img, mask_img
+
+    
+#  CutMix 的切块功能
+ 
+def rand_bbox(size, lam):
+    W = size[1]
+    H = size[2]
+    cut_rat = np.sqrt(1. - lam)
+    cut_w = int(W * cut_rat)
+    cut_h = int(H * cut_rat)
+
+    # uniform
+    cx = np.random.randint(W)
+    cy = np.random.randint(H)
+
+    bbx1 = np.clip(cx - cut_w // 2, 0, W)
+    bby1 = np.clip(cy - cut_h // 2, 0, H)
+    bbx2 = np.clip(cx + cut_w // 2, 0, W)
+    bby2 = np.clip(cy + cut_h // 2, 0, H)
+
+    return bbx1, bby1, bbx2, bby2
+    
+
+
+def train_collate_fn(batch):
+    size = [512, 512]
+    trans = transforms.Compose([ 
+                transforms.RandomHorizontalFlip(),  # 随机水平翻转
+                transforms.RandomVerticalFlip(),    # 随机垂直旋转
+                transforms.RandomRotation(10) ,     # 随机旋转 （-10,10）度
+    ])
+    images = torch.empty(len(batch), 3, size[0], size[1])
+    masks = torch.empty(len(batch),1, size[0], size[1])
+    
+    
+    for i in range(len(batch)):
+        image, mask = batch[i]
+        seed = np.random.randint(2147483647)
+        torch.manual_seed(seed)
+        image = trans(image)
+        torch.manual_seed(seed)
+        mask = trans(mask)
+
+        
+        # cut mix
+        rand_index = random.randint(0, len(batch)-1)
+        rand_img, rand_mask = batch[rand_index]
+
+        lam = np.random.beta(1., 1.)
+        bbx1, bby1, bbx2, bby2 = rand_bbox(rand_mask.size(), lam)
+
+        image[:, bbx1:bbx2, bby1:bby2] = rand_img[:, bbx1:bbx2, bby1:bby2]
+        mask[:, bbx1:bbx2, bby1:bby2] = rand_mask[:, bbx1:bbx2, bby1:bby2]
+        
+        images[i] = image
+        masks[i] = mask
+    
+    return images, masks
+
+def initDataLoader(batch_size):
+    dataset =  APODataSet(img_dir = "/kaggle/input/dltrack/apo_images",
+                          mask_dir = "/kaggle/input/dltrack/apo_masks",
+                         size = [512, 512])
+
+    total = len(dataset)
+    train_size = int(0.8*total)
+    validate_size = total - train_size
+
+    train_data, validate_data = random_split(dataset, [train_size, validate_size])
+
+    print("dataset info\ntotal: {}, train_size: {}, validate_size: {}".format(total, len(train_data), len(validate_data)))
+
+    trainloader = DataLoader(dataset=train_data,
+                                         batch_size=batch_size, collate_fn = train_collate_fn,
+                                         num_workers=0, 
+                                         shuffle=True)
+    valloader = DataLoader(dataset=validate_data,
+                                        batch_size=1, 
+                                        num_workers=0,
+                                        shuffle=False)
+    return trainloader, valloader
+
+
+def showImage(loader):
+    for i, data in enumerate(loader):
+        images, masks = data
+        orig_img = images[0]
+        mask_img = masks[0]
+        break
+
+    # idx = random.randint(0, len(dataset))
+    # orig_img, mask_img = dataset[idx]
+
+    print(orig_img.size())
+    print(mask_img.size())
+
+
+    orig_img = orig_img.cpu().numpy().transpose(1, 2, 0)
+    mask_img = mask_img.cpu().numpy().transpose(1, 2, 0)
+
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize = (15, 12))
+
+    ax1.imshow(orig_img)
+    ax1.grid(False)
+    ax1.axis('off')
+    ax1.set_title("origin_img")
+
+    ax2.imshow(mask_img, cmap="gray")
+    ax2.grid(False)
+    ax2.axis('off')
+    ax2.set_title("mask_img")
+
+    plt.show()
+
+    
+
+
+
+@torch.inference_mode()
+def evaluate(model, dataloader, device, amp, experiment, epoch, test_table, logging = False):
+    class_labels= { 1: "target" }
+    model.eval()
+    
+    num_val_batches = len(dataloader)
+    bce_loss = 0
+    dice_loss = 0
+    iou_score = 0
+
+    if isinstance(model, nn.DataParallel):
+        num_classes = model.module.num_classes
+    else:
+        num_classes = model.num_classes
+    
+    # 因为在非训练过程（推理过程中），已经在网络最后一层加了log和过滤
+    # 因此这里的损失函数都要使用不带log的
+    criterion = nn.BCELoss().cuda()
+    diceloss = smp.losses.DiceLoss(mode='binary', from_logits=False).cuda()
+    
+    g_bce_loss = 0
+    g_dice_loss = 0
+    g_iou_score = 0
+            
+    g_accuracy = 0
+    g_precision= 0
+    g_f1_score = 0
+    g_f2_score= 0
+    
+    idx = -1
+    # iterate over the validation set
+    with tqdm(total=num_val_batches, desc='Validation round', unit='batch', position=0 ,leave=True) as pbar:
+        for batch in dataloader:
+            idx += 1
+            
+            images, mask_true = batch
+
+            # move images and labels to correct device and type
+            images = images.to(device=device, dtype=torch.float32, memory_format=torch.channels_last)
+            mask_true = mask_true.to(device=device, dtype=torch.float32)
+
+            # predict the mask
+            mask_pred = model(images)
+            bce_loss = criterion(mask_pred, mask_true.float())
+            dice_loss = diceloss(mask_pred, mask_true)
+
+            tp, fp, fn, tn = smp.metrics.get_stats(mask_pred, mask_true.long(), mode='binary', threshold=0.5)
+
+            iou_score = smp.metrics.iou_score(tp, fp, fn, tn, reduction="micro")
+            pbar.update(images.shape[0])
+            
+            f1_score = smp.metrics.f1_score(tp, fp, fn, tn, reduction="micro")
+            f2_score = smp.metrics.fbeta_score(tp, fp, fn, tn, beta=2, reduction="micro")
+        
+            accuracy = smp.metrics.accuracy(tp, fp, fn, tn, reduction="macro")
+            precision = smp.metrics.precision(tp, fp, fn, tn, reduction="macro")
+    
+
+        
+            g_bce_loss += bce_loss
+            g_dice_loss += dice_loss
+        
+            g_iou_score += iou_score
+        
+            g_f1_score += f1_score
+            g_f2_score += f2_score
+            
+            g_accuracy += accuracy
+            g_precision += precision
+            
+            
+            if logging:
+                test_table.add_data(epoch, idx, 
+                                    wandb.Image(images[0].float().cpu(),
+                                                masks = { 
+                                                    "predictions": {
+                                                        "mask_data": mask_pred[0][0].cpu().numpy(), "class_labels": class_labels
+                                                    },
+                                                    "ground_truth": {
+                                                        "mask_data": mask_true[0][0].cpu().numpy(), "class_labels": class_labels
+                                                    },
+                                    }),
+                                    bce_loss, dice_loss, f1_score,
+                                    iou_score, accuracy, precision)
+
+        g_bce_loss = (g_bce_loss / max(num_val_batches, 1))
+        g_dice_loss = (g_dice_loss / max(num_val_batches, 1))
+        g_iou_score = (g_iou_score / max(num_val_batches, 1))
+        g_accuracy = (g_accuracy / max(num_val_batches, 1))
+        g_precision= (g_precision / max(num_val_batches, 1))
+        g_f1_score = (g_f1_score / max(num_val_batches, 1))
+        g_f2_score= (g_f2_score / max(num_val_batches, 1))
+
+        pbar.set_postfix(**{"Validation bce loss": bce_loss.item(), "dice loss": dice_loss.item(), "IoU Score": iou_score.item()})
+    
+    if logging:
+        try:
+            experiment.log({
+                'ave_validation Loss': g_bce_loss + g_dice_loss,
+                'ave_accuracy': g_accuracy,
+                'ave_precision':g_precision,
+                'ave_f1_score':g_f1_score,
+                'ave_f2_score':g_f2_score,
+                'average validation IoU Score': g_iou_score,
+#                 'test_predictions': test_table,
+            })
+        except Exception as e:
+            print(e)
+            pass
+    
+    return (dice_loss, iou_score)    
+
+
+def train(model, device, project,
+          epochs: int = 60,
+          learning_rate: float = 1e-5, 
+          weight_decay: float = 1e-8,
+          momentum: float = 0.999,
+          batch_size: int = 6,
+          amp: bool = False,
+          gradient_clipping: float = 1.0):
+    
+    trainloader, valloader = initDataLoader(batch_size)
+    n_train = len(trainloader.dataset)
+    n_val = len(valloader.dataset)
+
+
+    if isinstance(model, nn.DataParallel):
+        num_classes = model.module.num_classes
+        input_channels = model.module.input_channels
+    else:
+        num_classes = model.num_classes
+        input_channels = model.input_channels
+        
+
+    # (Initialize logging)
+    experiment = wandb.init(project=project, job_type="upload", resume='allow', anonymous='must', notes='水平和垂直翻转，旋转(-10,10)度，mixcut')
+    experiment.config.update(
+        dict(epochs=epochs, batch_size=batch_size, amp=True)
+    )
+    artifact = wandb.Artifact("test_preds".format(project), type="raw_data")
+    experiment.use_artifact(artifact)
+
+    
+    logging.info(f'''Starting training:
+        Epochs:          {epochs}
+        Batch size:      {batch_size}
+        Learning rate:   {learning_rate}
+        Training size:   {n_train}
+        Validation size: {n_val}
+        Device:          {device.type}
+        Mixed Precision: {amp}
+    ''')
+    
+
+    optimizer = optim.Adam(model.parameters(), lr=learning_rate)
+    scheduler = optim.lr_scheduler.CosineAnnealingWarmRestarts(optimizer, T_0=1, T_mult=2, eta_min=5e-5)  # goal: maximize Dice scor
+    grad_scaler = torch.cuda.amp.GradScaler(enabled=amp)
+    
+    # 训练过程中，网络最后一层没有添加log，所以要使用带log的损失函数
+    criterion = nn.BCEWithLogitsLoss().cuda()
+    dice_loss = smp.losses.DiceLoss(mode='binary', from_logits=True).cuda()
+
+    global_step = 0
+
+    # 5. Begin training
+    for epoch in range(1, epochs + 1):
+        columns = ["epoch", "image_id", "image", "bceLoss", "diceLoss", "f1_score", "iouScore", "accuracy", "precision",]
+    
+        test_table = wandb.Table(columns=columns)
+    
+        model.train()
+        epoch_loss = 0
+        with tqdm(total=n_train, desc=f'Epoch {epoch}/{epochs}', unit='batch') as pbar:
+            for batch in trainloader:
+                images, true_masks = batch
+
+                assert images.shape[1] == input_channels, \
+                    f'Network has been defined with {input_channels} input channels, ' \
+                    f'but loaded images have {images.shape[1]} channels. Please check that ' \
+                    'the images are loaded correctly.'
+
+                images = images.to(device=device, dtype=torch.float32, memory_format=torch.channels_last)
+                
+                true_masks = true_masks.to(device=device, dtype=torch.long)
+
+                with torch.autocast(device.type if device.type != 'mps' else 'cpu', enabled=amp):
+                    masks_pred = model(images)
+                    loss = criterion(masks_pred, true_masks.float())
+                    loss += dice_loss(masks_pred, true_masks)
+                    tp, fp, fn, tn = smp.metrics.get_stats(masks_pred, true_masks.long(), mode='binary', threshold=0.5)
+                    iou_score = smp.metrics.iou_score(tp, fp, fn, tn, reduction="micro")
+    
+                optimizer.zero_grad(set_to_none=True)
+                grad_scaler.scale(loss).backward()
+                torch.nn.utils.clip_grad_norm_(model.parameters(), gradient_clipping)
+                grad_scaler.step(optimizer)
+                grad_scaler.update()
+
+                pbar.update(images.shape[0])
+                global_step += 1
+                epoch_loss += loss.item()
+                pbar.set_postfix(**{'loss (batch)': epoch_loss/n_train})
+                
+                if global_step % 10 == 0:
+                    experiment.log({
+                        'learning rate': optimizer.param_groups[0]['lr'],
+                        'train iou': iou_score,
+                        'train loss': loss.item(),
+                        'step': global_step,
+                        'epoch': epoch
+                    })
+
+           # Evaluation round
+                division_step = (n_train // batch_size)
+                if division_step > 0:
+                    if global_step % division_step == 0:
+                        val_score, iou_score = evaluate(model, valloader, device, amp, experiment, epoch, test_table, logging = False)
+                        
+                        model.train()
+                        scheduler.step(val_score)
+        
+        # 每10个 epoch 更新一遍 wandb
+        evaluate(model, valloader, device, amp, experiment, epoch, test_table, logging = True)
+        try:
+            draft_artifact = artifact.new_draft()
+            draft_artifact.add(test_table, "test_predictions")
+            experiment.log_artifact(draft_artifact)
+        except Exception as e:
+            print(e)
+            pass
+        model.train()
+
+    experiment.finish()
+
+
+def StarTrain(project, model, epochs, batch_size):
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    if torch.cuda.device_count() > 1:
+        print("Let's use", torch.cuda.device_count(), "GPUs!")
+        model = nn.DataParallel(model)
+
+    model = model.to(memory_format=torch.channels_last)
+    model.to(device)
+    total_params = sum(p.numel() for p in model.parameters())
+    print(f"模型参数量为：{total_params}")
+    print("其详情为：")
+    for name,parameters in model.named_parameters():
+        print(name,':',parameters.size())
+    train(model, device, project=project, epochs=epochs, batch_size=batch_size)
