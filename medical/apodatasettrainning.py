@@ -38,6 +38,7 @@ import time
 import torch.optim as optim
 import segmentation_models_pytorch as smp
 
+from datetime import datetime
 
 
 # TODO: image和mask名称不一样时跳过
@@ -338,11 +339,13 @@ def train(model, device, project,
         
 
     # (Initialize logging)
+    now = datetime.now().strftime("%Y%m%d%H%M%S")
+
     experiment = wandb.init(project=project, job_type="upload", resume='allow', anonymous='must', notes='水平和垂直翻转，旋转(-10,10)度，mixcut')
     experiment.config.update(
         dict(epochs=epochs, batch_size=batch_size, amp=True)
     )
-    artifact = wandb.Artifact("test_preds".format(project), type="raw_data")
+    artifact = wandb.Artifact("{}_test_preds".format(now), type="raw_data")
     experiment.use_artifact(artifact)
 
     
