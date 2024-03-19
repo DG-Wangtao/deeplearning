@@ -6,6 +6,7 @@
 # %% [code]
 # %% [code]
 # %% [code]
+# %% [code]
 # !pip install scipy scikit-image torch torchvision pathlib wandb segmentation-models-pytorch
 # !pip install wandb
 # !pip install wandb --upgrade
@@ -497,7 +498,7 @@ def train(model, device, project,
         
         # 每10个 epoch 更新一遍 wandb
         with torch.no_grad():
-            val_score, iou_score = evaluate(model, valloader, device, amp, experiment, epoch, artifact.new_draft(), logging = False)
+            val_score, iou_score = evaluate(model, valloader, device, amp, experiment, epoch, artifact.new_draft(), logging = True)
         torch.set_grad_enabled(True)
         model.train()
         scheduler.step(val_score)
