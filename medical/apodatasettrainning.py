@@ -320,7 +320,7 @@ def evaluate(model, dataloader, device, amp, experiment, epoch, artifact, loggin
 
             tp, fp, fn, tn = smp.metrics.get_stats(mask_pred, mask_true.long(), mode='binary', threshold=0.5)
 
-            iou_score = smp.metrics.iou_score(tp, fp, fn, tn, reduction="micro")
+            iou_score = smp.metrics.iou_score(tp, fp, fn, tn, reduction="micro").item()
             pbar.update(images.shape[0])
             
             f1_score = smp.metrics.f1_score(tp, fp, fn, tn, reduction="micro")
@@ -365,7 +365,7 @@ def evaluate(model, dataloader, device, amp, experiment, epoch, artifact, loggin
         g_f1_score = (g_f1_score / max(num_val_batches, 1))
         g_f2_score= (g_f2_score / max(num_val_batches, 1))
 
-        pbar.set_postfix(**{"Validation bce loss": bce_loss.item(), "dice loss": dice_loss.item(), "IoU Score": iou_score.item()})
+        pbar.set_postfix(**{"Validation bce loss": bce_loss, "dice loss": dice_loss, "IoU Score": iou_score})
     
     if logging:
         try:
@@ -463,7 +463,7 @@ def train(model, device, project,
                     loss = criterion(masks_pred, true_masks.float())
                     loss += dice_loss(masks_pred, true_masks)
                     tp, fp, fn, tn = smp.metrics.get_stats(masks_pred, true_masks.long(), mode='binary', threshold=0.5)
-                    iou_score = smp.metrics.iou_score(tp, fp, fn, tn, reduction="micro")
+                    iou_score = smp.metrics.iou_score(tp, fp, fn, tn, reduction="micro").item()
     
                 optimizer.zero_grad(set_to_none=True)
                 grad_scaler.scale(loss).backward()
