@@ -332,7 +332,7 @@ def evaluate(model, dataloader, device, amp, experiment, epoch, artifact, loggin
 
         
             g_bce_loss += bce_loss
-            g_dice_loss += dice_loss.item()
+            g_dice_loss += dice_loss
         
             g_iou_score += iou_score
         
