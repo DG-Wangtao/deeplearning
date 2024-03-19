@@ -322,13 +322,12 @@ def evaluate(model, dataloader, device, amp, experiment, epoch, artifact, loggin
             tp, fp, fn, tn = smp.metrics.get_stats(mask_pred, mask_true.long(), mode='binary', threshold=0.5)
 
             iou_score = smp.metrics.iou_score(tp, fp, fn, tn, reduction="micro").item()
-            pbar.update(images.shape[0])
             
-            f1_score = smp.metrics.f1_score(tp, fp, fn, tn, reduction="micro")
-            f2_score = smp.metrics.fbeta_score(tp, fp, fn, tn, beta=2, reduction="micro")
+            f1_score = smp.metrics.f1_score(tp, fp, fn, tn, reduction="micro").item()
+            f2_score = smp.metrics.fbeta_score(tp, fp, fn, tn, beta=2, reduction="micro").item()
         
-            accuracy = smp.metrics.accuracy(tp, fp, fn, tn, reduction="macro")
-            precision = smp.metrics.precision(tp, fp, fn, tn, reduction="macro")
+            accuracy = smp.metrics.accuracy(tp, fp, fn, tn, reduction="macro").item()
+            precision = smp.metrics.precision(tp, fp, fn, tn, reduction="macro").item()
     
 
         
@@ -343,6 +342,7 @@ def evaluate(model, dataloader, device, amp, experiment, epoch, artifact, loggin
             g_accuracy += accuracy
             g_precision += precision
             
+            pbar.update(images.shape[0])
             
             if logging:
                 test_table.add_data(epoch, idx, 
