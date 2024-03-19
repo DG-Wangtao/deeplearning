@@ -460,8 +460,8 @@ def train(model, device, project,
 
                 with torch.autocast(device.type if device.type != 'mps' else 'cpu', enabled=amp):
                     masks_pred = model(images)
-                    loss = criterion(masks_pred, true_masks.float()).item()
-                    loss += dice_loss(masks_pred, true_masks).item()
+                    loss = criterion(masks_pred, true_masks.float())
+                    loss += dice_loss(masks_pred, true_masks)
                     tp, fp, fn, tn = smp.metrics.get_stats(masks_pred, true_masks.long(), mode='binary', threshold=0.5)
                     iou_score = smp.metrics.iou_score(tp, fp, fn, tn, reduction="micro")
     
