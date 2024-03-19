@@ -416,8 +416,8 @@ def train(model, device, project,
     experiment.config.update(
         dict(epochs=epochs, batch_size=batch_size, amp=True)
     )
-#     artifact = wandb.Artifact("{}_test_preds".format(now), type="raw_data")
-#     experiment.use_artifact(artifact)
+    artifact = wandb.Artifact("{}_test_preds".format(now), type="raw_data")
+    experiment.use_artifact(artifact)
 
     
     logging.info(f'''Starting training:
