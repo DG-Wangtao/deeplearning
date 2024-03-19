@@ -3,6 +3,9 @@
 # %% [code]
 # %% [code]
 # %% [code]
+# %% [code]
+# %% [code]
+# %% [code]
 # !pip install scipy scikit-image torch torchvision pathlib wandb segmentation-models-pytorch
 # !pip install wandb
 # !pip install wandb --upgrade
@@ -40,6 +43,8 @@ import segmentation_models_pytorch as smp
 
 from datetime import datetime
 
+import gc 
+
 
 # TODO: image和mask名称不一样时跳过
 class APODataSet(Dataset):
@@ -62,6 +67,8 @@ class APODataSet(Dataset):
             self.masks.append(mask_path)
             
         self.transform = transforms.Compose([ transforms.Resize(size), transforms.ToTensor()])
+        self.images = np.array(self.images)
+        self.masks = np.array(self.masks)
 
     def load_image(self, path) -> Image.Image:
         "Opens an image via a path and returns it."
@@ -71,94 +78,153 @@ class APODataSet(Dataset):
     def __len__(self) -> int:
         "Returns the total number of samples."
         return len(self.images)
+
     # 重写 __getitem__() 方法 (required for subclasses of torch.utils.data.Dataset)
     def __getitem__(self, index: int) -> Tuple[torch.Tensor, torch.Tensor]:
-        "Returns one sample of data, image and mask (X, y)."
-        orig_img = self.load_image(self.images[index])
-        mask_img = self.load_image(self.masks[index])
+        return self.images[index], self.masks[index]
 
-        orig_img = self.transform(orig_img)
-        mask_img = self.transform(mask_img)
-        
-        
-        mask_img = torch.where(mask_img>0.5,torch.ones_like(mask_img),torch.zeros_like(mask_img))
-        
-        
-        return orig_img, mask_img
+class EnhanceDataSet(Dataset):
+    def __init__(self, dataset, size, transform, cutmix):
+        self.size = size
+        self.dataset = dataset
+        self.transform = transform
+        self.cutmix = cutmix
+#         transforms.Compose([ 
+#                 transforms.Resize(size),
+#                 transforms.RandomHorizontalFlip(),  # 随机水平翻转
+#                 transforms.RandomVerticalFlip(),    # 随机垂直旋转
+#                 transforms.RandomRotation(10) ,     # 随机旋转 （-10,10）度
+#                 transforms.ToTensor()
+#         ])
 
-    
-#  CutMix 的切块功能
- 
-def rand_bbox(size, lam):
-    W = size[1]
-    H = size[2]
-    cut_rat = np.sqrt(1. - lam)
-    cut_w = int(W * cut_rat)
-    cut_h = int(H * cut_rat)
-
-    # uniform
-    cx = np.random.randint(W)
-    cy = np.random.randint(H)
-
-    bbx1 = np.clip(cx - cut_w // 2, 0, W)
-    bby1 = np.clip(cy - cut_h // 2, 0, H)
-    bbx2 = np.clip(cx + cut_w // 2, 0, W)
-    bby2 = np.clip(cy + cut_h // 2, 0, H)
-
-    return bbx1, bby1, bbx2, bby2
-    
-
-
-def train_collate_fn(batch):
-    size = [512, 512]
-    trans = transforms.Compose([ 
-                transforms.RandomHorizontalFlip(),  # 随机水平翻转
-                transforms.RandomVerticalFlip(),    # 随机垂直旋转
-                transforms.RandomRotation(10) ,     # 随机旋转 （-10,10）度
-    ])
-    images = torch.empty(len(batch), 3, size[0], size[1])
-    masks = torch.empty(len(batch),1, size[0], size[1])
+    def load_image(self, path) -> Image.Image:
+        "Opens an image via a path and returns it."
+        return Image.open(path)
     
     
-    for i in range(len(batch)):
-        image, mask = batch[i]
+    def __getitem__(self, index):
+        imag_path, mask_path = self.dataset[index]
+        image = self.load_image(imag_path)
+        mask = self.load_image(mask_path)
+
         seed = np.random.randint(2147483647)
         torch.manual_seed(seed)
-        image = trans(image)
+        image = self.transform(image)
         torch.manual_seed(seed)
-        mask = trans(mask)
-
+        mask = self.transform(mask)
         
         # cut mix
-        rand_index = random.randint(0, len(batch)-1)
-        rand_img, rand_mask = batch[rand_index]
+        if self.cutmix:
+            rand_index = random.randint(0, len(self.dataset)-1)
+            rand_imag_path, rand_mask_path = self.dataset[rand_index]
+            rand_img = self.load_image(rand_imag_path)
+            rand_mask = self.load_image(rand_mask_path)
 
-        lam = np.random.beta(1., 1.)
-        bbx1, bby1, bbx2, bby2 = rand_bbox(rand_mask.size(), lam)
+#             seed = np.random.randint(2147483647)
+            torch.manual_seed(seed)
+            rand_img = self.transform(rand_img)
+            torch.manual_seed(seed)
+            rand_mask = self.transform(rand_mask)
 
-        image[:, bbx1:bbx2, bby1:bby2] = rand_img[:, bbx1:bbx2, bby1:bby2]
-        mask[:, bbx1:bbx2, bby1:bby2] = rand_mask[:, bbx1:bbx2, bby1:bby2]
-        
-        images[i] = image
-        masks[i] = mask
+            lam = np.random.beta(1., 1.)
+            bbx1, bby1, bbx2, bby2 = self.rand_bbox(rand_mask.size(), lam)
+
+            image[:, bbx1:bbx2, bby1:bby2] = rand_img[:, bbx1:bbx2, bby1:bby2]
+            mask[:, bbx1:bbx2, bby1:bby2] = rand_mask[:, bbx1:bbx2, bby1:bby2]
     
-    return images, masks
+        mask = torch.where(mask>0.5,torch.ones_like(mask),torch.zeros_like(mask))
+        
+        return image.numpy(), mask.numpy()
+        
+    def __len__(self):
+        return len(self.dataset)
+    
+    #  CutMix 的切块功能
+    def rand_bbox(self, size, lam):
+        W = size[1]
+        H = size[2]
+        cut_rat = np.sqrt(1. - lam)
+        cut_w = int(W * cut_rat)
+        cut_h = int(H * cut_rat)
 
-def initDataLoader(batch_size):
+        # uniform
+        cx = np.random.randint(W)
+        cy = np.random.randint(H)
+
+        bbx1 = np.clip(cx - cut_w // 2, 0, W)
+        bby1 = np.clip(cy - cut_h // 2, 0, H)
+        bbx2 = np.clip(cx + cut_w // 2, 0, W)
+        bby2 = np.clip(cy + cut_h // 2, 0, H)
+
+        return bbx1, bby1, bbx2, bby2
+
+
+# def train_collate_fn(batch):
+#     size = [512, 512]
+#     trans = transforms.Compose([ 
+#                 transforms.RandomHorizontalFlip(),  # 随机水平翻转
+#                 transforms.RandomVerticalFlip(),    # 随机垂直旋转
+#                 transforms.RandomRotation(10) ,     # 随机旋转 （-10,10）度
+#     ])
+    
+#     images = torch.empty(len(batch), 3, size[0], size[1])
+#     masks = torch.empty(len(batch),1, size[0], size[1])
+    
+    
+#     for i in range(len(batch)):
+#         image, mask = batch[i]
+#         seed = np.random.randint(2147483647)
+#         torch.manual_seed(seed)
+#         image = trans(image)
+#         torch.manual_seed(seed)
+#         mask = trans(mask)
+
+        
+#         # cut mix
+#         rand_index = random.randint(0, len(batch)-1)
+#         rand_img, rand_mask = batch[rand_index]
+
+#         lam = np.random.beta(1., 1.)
+#         bbx1, bby1, bbx2, bby2 = rand_bbox(rand_mask.size(), lam)
+
+#         image[:, bbx1:bbx2, bby1:bby2] = rand_img[:, bbx1:bbx2, bby1:bby2]
+#         mask[:, bbx1:bbx2, bby1:bby2] = rand_mask[:, bbx1:bbx2, bby1:bby2]
+        
+#         images[i] = image
+#         masks[i] = mask
+    
+#     return images, masks
+
+def initDataLoader(batch_size, size= [512, 512]):
     dataset =  APODataSet(img_dir = "/kaggle/input/dltrack/apo_images",
                           mask_dir = "/kaggle/input/dltrack/apo_masks",
-                         size = [512, 512])
+                         size = size)
 
     total = len(dataset)
     train_size = int(0.8*total)
     validate_size = total - train_size
 
     train_data, validate_data = random_split(dataset, [train_size, validate_size])
-
+    train_data = EnhanceDataSet(dataset = train_data, size = size, transform = 
+                                        transforms.Compose([ 
+                                            transforms.Resize(size),
+                                            transforms.RandomHorizontalFlip(),  # 随机水平翻转
+                                            transforms.RandomVerticalFlip(),    # 随机垂直旋转
+                                            transforms.RandomRotation(10) ,     # 随机旋转 （-10,10）度
+                                            transforms.ToTensor()
+                                    ]), cutmix = True
+                               )
+    
+    validate_data = EnhanceDataSet(dataset = validate_data, size = size, transform = 
+                                        transforms.Compose([ 
+                                            transforms.Resize(size),
+                                            transforms.ToTensor()
+                                    ]), cutmix = False
+                               )
     print("dataset info\ntotal: {}, train_size: {}, validate_size: {}".format(total, len(train_data), len(validate_data)))
 
     trainloader = DataLoader(dataset=train_data,
-                                         batch_size=batch_size, collate_fn = train_collate_fn,
+                                         batch_size=batch_size,
                                          num_workers=0, 
                                          shuffle=True)
     valloader = DataLoader(dataset=validate_data,
@@ -178,8 +244,8 @@ def showImage(loader):
     # idx = random.randint(0, len(dataset))
     # orig_img, mask_img = dataset[idx]
 
-    print(orig_img.size())
-    print(mask_img.size())
+    print(orig_img.shape)
+    print(mask_img.shape)
 
 
     orig_img = orig_img.cpu().numpy().transpose(1, 2, 0)
@@ -199,14 +265,17 @@ def showImage(loader):
 
     plt.show()
 
-    
 
 
 
 @torch.inference_mode()
-def evaluate(model, dataloader, device, amp, experiment, epoch, test_table, logging = False):
+def evaluate(model, dataloader, device, amp, experiment, epoch, artifact, logging = False):
     class_labels= { 1: "target" }
     model.eval()
+    
+    if logging:
+        columns = ["epoch", "image_id", "image", "bceLoss", "diceLoss", "f1_score", "iouScore", "accuracy", "precision",]
+        test_table = wandb.Table(columns=columns)
     
     num_val_batches = len(dataloader)
     bce_loss = 0
@@ -241,13 +310,13 @@ def evaluate(model, dataloader, device, amp, experiment, epoch, test_table, logg
             images, mask_true = batch
 
             # move images and labels to correct device and type
-            images = images.to(device=device, dtype=torch.float32, memory_format=torch.channels_last)
-            mask_true = mask_true.to(device=device, dtype=torch.float32)
+            images = images.to(device=device, dtype=torch.float32, memory_format=torch.channels_last).clone()
+            mask_true = mask_true.to(device=device, dtype=torch.float32).clone()
 
             # predict the mask
             mask_pred = model(images)
-            bce_loss = criterion(mask_pred, mask_true.float())
-            dice_loss = diceloss(mask_pred, mask_true)
+            bce_loss = criterion(mask_pred, mask_true.float()).item()
+            dice_loss = diceloss(mask_pred, mask_true).item()
 
             tp, fp, fn, tn = smp.metrics.get_stats(mask_pred, mask_true.long(), mode='binary', threshold=0.5)
 
@@ -263,7 +332,7 @@ def evaluate(model, dataloader, device, amp, experiment, epoch, test_table, logg
 
         
             g_bce_loss += bce_loss
-            g_dice_loss += dice_loss
+            g_dice_loss += dice_loss.item()
         
             g_iou_score += iou_score
         
@@ -300,6 +369,9 @@ def evaluate(model, dataloader, device, amp, experiment, epoch, test_table, logg
     
     if logging:
         try:
+            artifact.add(test_table, "test_predictions")
+            experiment.log_artifact(artifact)
+            
             experiment.log({
                 'ave_validation Loss': g_bce_loss + g_dice_loss,
                 'ave_accuracy': g_accuracy,
@@ -307,7 +379,6 @@ def evaluate(model, dataloader, device, amp, experiment, epoch, test_table, logg
                 'ave_f1_score':g_f1_score,
                 'ave_f2_score':g_f2_score,
                 'average validation IoU Score': g_iou_score,
-#                 'test_predictions': test_table,
             })
         except Exception as e:
             print(e)
@@ -328,6 +399,7 @@ def train(model, device, project,
     trainloader, valloader = initDataLoader(batch_size)
     n_train = len(trainloader.dataset)
     n_val = len(valloader.dataset)
+    showImage(trainloader)
 
 
     if isinstance(model, nn.DataParallel):
@@ -340,13 +412,12 @@ def train(model, device, project,
 
     # (Initialize logging)
     now = datetime.now().strftime("%Y%m%d%H%M%S")
-
     experiment = wandb.init(project=project, job_type="upload", resume='allow', anonymous='must', notes='水平和垂直翻转，旋转(-10,10)度，mixcut')
     experiment.config.update(
         dict(epochs=epochs, batch_size=batch_size, amp=True)
     )
-    artifact = wandb.Artifact("{}_test_preds".format(now), type="raw_data")
-    experiment.use_artifact(artifact)
+#     artifact = wandb.Artifact("{}_test_preds".format(now), type="raw_data")
+#     experiment.use_artifact(artifact)
 
     
     logging.info(f'''Starting training:
@@ -372,10 +443,6 @@ def train(model, device, project,
 
     # 5. Begin training
     for epoch in range(1, epochs + 1):
-        columns = ["epoch", "image_id", "image", "bceLoss", "diceLoss", "f1_score", "iouScore", "accuracy", "precision",]
-    
-        test_table = wandb.Table(columns=columns)
-    
         model.train()
         epoch_loss = 0
         with tqdm(total=n_train, desc=f'Epoch {epoch}/{epochs}', unit='batch') as pbar:
@@ -393,8 +460,8 @@ def train(model, device, project,
 
                 with torch.autocast(device.type if device.type != 'mps' else 'cpu', enabled=amp):
                     masks_pred = model(images)
-                    loss = criterion(masks_pred, true_masks.float())
-                    loss += dice_loss(masks_pred, true_masks)
+                    loss = criterion(masks_pred, true_masks.float()).item()
+                    loss += dice_loss(masks_pred, true_masks).item()
                     tp, fp, fn, tn = smp.metrics.get_stats(masks_pred, true_masks.long(), mode='binary', threshold=0.5)
                     iou_score = smp.metrics.iou_score(tp, fp, fn, tn, reduction="micro")
     
@@ -409,37 +476,55 @@ def train(model, device, project,
                 epoch_loss += loss.item()
                 pbar.set_postfix(**{'loss (batch)': epoch_loss/n_train})
                 
-                if global_step % 10 == 0:
-                    experiment.log({
-                        'learning rate': optimizer.param_groups[0]['lr'],
-                        'train iou': iou_score,
-                        'train loss': loss.item(),
-                        'step': global_step,
-                        'epoch': epoch
-                    })
+#                 if global_step % 10 == 0:
+#                     experiment.log({
+#                         'learning rate': optimizer.param_groups[0]['lr'],
+#                         'train iou': iou_score,
+#                         'train loss': loss.item(),
+#                         'step': global_step,
+#                         'epoch': epoch
+#                     })
 
            # Evaluation round
-                division_step = (n_train // batch_size)
-                if division_step > 0:
-                    if global_step % division_step == 0:
-                        val_score, iou_score = evaluate(model, valloader, device, amp, experiment, epoch, test_table, logging = False)
-                        
-                        model.train()
-                        scheduler.step(val_score)
+#                 division_step = (n_train // batch_size)
+#                 if division_step > 0:
+#                     if global_step % division_step == 0:
+#                         with torch.no_grad():
+#                             val_score, iou_score = evaluate(model, valloader, device, amp, experiment, epoch, test_table, logging = False)
+#                         torch.set_grad_enabled(True)
+#                         model.train()
+#                         scheduler.step(val_score)
         
         # 每10个 epoch 更新一遍 wandb
-        evaluate(model, valloader, device, amp, experiment, epoch, test_table, logging = True)
-        try:
-            draft_artifact = artifact.new_draft()
-            draft_artifact.add(test_table, "test_predictions")
-            experiment.log_artifact(draft_artifact)
-        except Exception as e:
-            print(e)
-            pass
+        with torch.no_grad():
+            val_score, iou_score = evaluate(model, valloader, device, amp, experiment, epoch, artifact.new_draft(), logging = False)
+        torch.set_grad_enabled(True)
         model.train()
+#         scheduler.step(val_score)
+        
+#         gc.collect()
+#         torch.cuda.empty_cache()
 
     experiment.finish()
 
+def LoopDataLoader(epochs, batch_size):
+    trainloader, valloader = initDataLoader(batch_size)
+    n_train = len(trainloader.dataset)
+    n_val = len(valloader.dataset)
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    for epoch in range(1, epochs + 1):
+        print("{}/{}".format(epoch, epochs))
+        for batch in trainloader:
+            images, true_masks = batch
+            images = images.to(device=device, dtype=torch.float32, memory_format=torch.channels_last)
+                
+            true_masks = true_masks.to(device=device, dtype=torch.long)
+        for batch in valloader:
+            images = images.to(device=device, dtype=torch.float32, memory_format=torch.channels_last)
+                
+            true_masks = true_masks.to(device=device, dtype=torch.long)
+            images, true_masks = batch
+        
 
 def StarTrain(project, model, epochs, batch_size):
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -455,3 +540,4 @@ def StarTrain(project, model, epochs, batch_size):
     for name,parameters in model.named_parameters():
         print(name,':',parameters.size())
     train(model, device, project=project, epochs=epochs, batch_size=batch_size)
+
