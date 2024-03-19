@@ -476,14 +476,14 @@ def train(model, device, project,
                 epoch_loss += loss.item()
                 pbar.set_postfix(**{'loss (batch)': epoch_loss/n_train})
                 
-#                 if global_step % 10 == 0:
-#                     experiment.log({
-#                         'learning rate': optimizer.param_groups[0]['lr'],
-#                         'train iou': iou_score,
-#                         'train loss': loss.item(),
-#                         'step': global_step,
-#                         'epoch': epoch
-#                     })
+                if global_step % 10 == 0:
+                    experiment.log({
+                        'learning rate': optimizer.param_groups[0]['lr'],
+                        'train iou': iou_score,
+                        'train loss': loss.item(),
+                        'step': global_step,
+                        'epoch': epoch
+                    })
 
            # Evaluation round
 #                 division_step = (n_train // batch_size)
@@ -497,10 +497,10 @@ def train(model, device, project,
         
         # 每10个 epoch 更新一遍 wandb
         with torch.no_grad():
-            val_score, iou_score = evaluate(model, valloader, device, amp, experiment, epoch, artifact.new_draft(), logging = False)
+            val_score, iou_score = evaluate(model, valloader, device, amp, experiment, epoch, artifact.new_draft(), logging = True)
         torch.set_grad_enabled(True)
         model.train()
-#         scheduler.step(val_score)
+        scheduler.step(val_score)
         
 #         gc.collect()
 #         torch.cuda.empty_cache()
