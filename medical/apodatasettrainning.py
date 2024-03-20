@@ -274,9 +274,10 @@ def showImage(loader):
 def evaluate(model, dataloader, device, amp, experiment, epoch, logging = False):
     class_labels= { 1: "target" }
     model.eval()
+    logArt = epoch % 20 == 0:
     
     if logging:
-        if epoch % 20 == 0:
+        if logArt:
             columns = ["epoch", "image_id", "image", "bceLoss", "diceLoss", "f1_score", "iouScore", "accuracy", "precision",]
             test_table = wandb.Table(columns=columns)
         
@@ -349,7 +350,7 @@ def evaluate(model, dataloader, device, amp, experiment, epoch, logging = False)
             pbar.update(images.shape[0])
             
             if logging:
-                if test_table != None:
+                if logArt:
                     test_table.add_data(epoch, idx, 
                                     wandb.Image(images[0].float().cpu(),
                                                 masks = { 
@@ -375,7 +376,7 @@ def evaluate(model, dataloader, device, amp, experiment, epoch, logging = False)
     
     if logging:
         try:
-            if test_table != None and artifact != None:
+            if logArt:
                 artifact.add(test_table, "test_predictions")
                 experiment.log_artifact(artifact)
                 del test_table
