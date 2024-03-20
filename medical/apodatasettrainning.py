@@ -274,7 +274,7 @@ def showImage(loader):
 def evaluate(model, dataloader, device, amp, experiment, epoch, logging = False):
     class_labels= { 1: "target" }
     model.eval()
-    logArt = epoch % 20 == 0:
+    logArt = (epoch % 20 == 0):
     
     if logging:
         if logArt:
