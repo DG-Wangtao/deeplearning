@@ -276,10 +276,11 @@ def evaluate(model, dataloader, device, amp, experiment, epoch, logging = False)
     model.eval()
     
     if logging:
-        columns = ["epoch", "image_id", "image", "bceLoss", "diceLoss", "f1_score", "iouScore", "accuracy", "precision",]
-        test_table = wandb.Table(columns=columns)
+        if epoch % 20 == 0:
+            columns = ["epoch", "image_id", "image", "bceLoss", "diceLoss", "f1_score", "iouScore", "accuracy", "precision",]
+            test_table = wandb.Table(columns=columns)
         
-        artifact = wandb.Artifact("test_preds", type="raw_data")
+            artifact = wandb.Artifact("test_preds", type="raw_data")
     
     num_val_batches = len(dataloader)
     bce_loss = 0
@@ -348,7 +349,8 @@ def evaluate(model, dataloader, device, amp, experiment, epoch, logging = False)
             pbar.update(images.shape[0])
             
             if logging:
-                test_table.add_data(epoch, idx, 
+                if test_table != None:
+                    test_table.add_data(epoch, idx, 
                                     wandb.Image(images[0].float().cpu(),
                                                 masks = { 
                                                     "predictions": {
@@ -373,10 +375,11 @@ def evaluate(model, dataloader, device, amp, experiment, epoch, logging = False)
     
     if logging:
         try:
-            artifact.add(test_table, "test_predictions")
-            experiment.log_artifact(artifact)
-            del test_table
-            del artifact
+            if test_table != None and artifact != None:
+                artifact.add(test_table, "test_predictions")
+                experiment.log_artifact(artifact)
+                del test_table
+                del artifact
             
             experiment.log({
                 'ave_validation Loss': g_bce_loss + g_dice_loss,
@@ -385,7 +388,6 @@ def evaluate(model, dataloader, device, amp, experiment, epoch, logging = False)
                 'ave_f1_score':g_f1_score,
                 'ave_f2_score':g_f2_score,
                 'average validation IoU Score': g_iou_score,
-            #   'test_prediction': test_table,
             })
         except Exception as e:
             print(e)
