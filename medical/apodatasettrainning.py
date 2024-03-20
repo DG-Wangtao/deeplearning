@@ -279,7 +279,7 @@ def evaluate(model, dataloader, device, amp, experiment, epoch, logging = False)
         columns = ["epoch", "image_id", "image", "bceLoss", "diceLoss", "f1_score", "iouScore", "accuracy", "precision",]
         test_table = wandb.Table(columns=columns)
         
-        artifact = wandb.Artifact("{}_test_preds".format(now), type="raw_data")
+        artifact = wandb.Artifact("test_preds", type="raw_data")
         experiment.use_artifact(artifact)
     
     num_val_batches = len(dataloader)
@@ -417,7 +417,6 @@ def train(model, device, project,
         
 
     # (Initialize logging)
-    now = datetime.now().strftime("%Y%m%d%H%M%S")
     experiment = wandb.init(project=project, job_type="upload", resume='allow', anonymous='must', notes='水平和垂直翻转，旋转(-10,10)度，mixcut')
     experiment.config.update(
         dict(epochs=epochs, batch_size=batch_size, amp=True)
