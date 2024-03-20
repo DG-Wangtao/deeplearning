@@ -7,6 +7,7 @@
 # %% [code]
 # %% [code]
 # %% [code]
+# %% [code]
 # !pip install scipy scikit-image torch torchvision pathlib wandb segmentation-models-pytorch
 # !pip install wandb
 # !pip install wandb --upgrade
@@ -270,13 +271,16 @@ def showImage(loader):
 
 
 @torch.inference_mode()
-def evaluate(model, dataloader, device, amp, experiment, epoch, artifact, logging = False):
+def evaluate(model, dataloader, device, amp, experiment, epoch, logging = False):
     class_labels= { 1: "target" }
     model.eval()
     
     if logging:
         columns = ["epoch", "image_id", "image", "bceLoss", "diceLoss", "f1_score", "iouScore", "accuracy", "precision",]
         test_table = wandb.Table(columns=columns)
+        
+        artifact = wandb.Artifact("{}_test_preds".format(now), type="raw_data")
+        experiment.use_artifact(artifact)
     
     num_val_batches = len(dataloader)
     bce_loss = 0
@@ -372,6 +376,7 @@ def evaluate(model, dataloader, device, amp, experiment, epoch, artifact, loggin
         try:
             artifact.add(test_table, "test_predictions")
             artifact.save()
+            del test_table
             
             experiment.log({
                 'ave_validation Loss': g_bce_loss + g_dice_loss,
@@ -417,8 +422,6 @@ def train(model, device, project,
     experiment.config.update(
         dict(epochs=epochs, batch_size=batch_size, amp=True)
     )
-    artifact = wandb.Artifact("{}_test_preds".format(now), type="raw_data")
-    experiment.use_artifact(artifact)
 
     
     logging.info(f'''Starting training:
@@ -498,12 +501,12 @@ def train(model, device, project,
         
         # 每10个 epoch 更新一遍 wandb
         with torch.no_grad():
-            val_score, iou_score = evaluate(model, valloader, device, amp, experiment, epoch, artifact.new_draft(), logging = True)
+            val_score, iou_score = evaluate(model, valloader, device, amp, experiment, epoch, logging = True)
         torch.set_grad_enabled(True)
         model.train()
         scheduler.step(val_score)
         
-        gc.collect()
+#         gc.collect()
 #         torch.cuda.empty_cache()
 
     experiment.finish()
