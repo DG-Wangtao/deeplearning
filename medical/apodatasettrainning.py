@@ -375,7 +375,7 @@ def evaluate(model, dataloader, device, amp, experiment, epoch, logging = False)
         try:
 #             artifact.add(test_table, "test_predictions")
 #             experiment.log_artifact(artifact)
-            del test_table
+
 #             del artifact
             
             experiment.log({
@@ -390,7 +390,8 @@ def evaluate(model, dataloader, device, amp, experiment, epoch, logging = False)
         except Exception as e:
             print(e)
             pass
-    
+        
+        del test_table
     return (dice_loss, iou_score)    
 
 
