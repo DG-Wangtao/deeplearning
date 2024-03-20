@@ -374,7 +374,7 @@ def evaluate(model, dataloader, device, amp, experiment, epoch, logging = False)
     if logging:
         try:
             artifact.add(test_table, "test_predictions")
-            artifact.save()
+            experiment.log_artifact(artifact)
             del test_table
             
             experiment.log({
@@ -504,7 +504,7 @@ def train(model, device, project,
         model.train()
         scheduler.step(val_score)
         
-#         gc.collect()
+        gc.collect()
 #         torch.cuda.empty_cache()
 
     experiment.finish()
