@@ -280,7 +280,6 @@ def evaluate(model, dataloader, device, amp, experiment, epoch, logging = False)
         test_table = wandb.Table(columns=columns)
         
         artifact = wandb.Artifact("test_preds", type="raw_data")
-        experiment.use_artifact(artifact)
     
     num_val_batches = len(dataloader)
     bce_loss = 0
