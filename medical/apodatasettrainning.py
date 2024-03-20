@@ -385,6 +385,7 @@ def evaluate(model, dataloader, device, amp, experiment, epoch, logging = False)
                 'ave_f1_score':g_f1_score,
                 'ave_f2_score':g_f2_score,
                 'average validation IoU Score': g_iou_score,
+                'test_prediction': test_table,
             })
         except Exception as e:
             print(e)
