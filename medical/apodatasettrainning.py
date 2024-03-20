@@ -376,6 +376,7 @@ def evaluate(model, dataloader, device, amp, experiment, epoch, logging = False)
             artifact.add(test_table, "test_predictions")
             experiment.log_artifact(artifact)
             del test_table
+            del artifact
             
             experiment.log({
                 'ave_validation Loss': g_bce_loss + g_dice_loss,
