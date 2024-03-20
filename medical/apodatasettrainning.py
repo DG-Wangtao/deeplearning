@@ -274,8 +274,11 @@ def showImage(loader):
 def evaluate(model, dataloader, device, amp, experiment, epoch, logging = False):
     class_labels= { 1: "target" }
     model.eval()
-    logArt = (epoch % 20 == 0):
     
+    logArt = False
+    if epoch % 20 == 0:
+        logArt = True
+
     if logging:
         if logArt:
             columns = ["epoch", "image_id", "image", "bceLoss", "diceLoss", "f1_score", "iouScore", "accuracy", "precision",]
