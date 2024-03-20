@@ -279,7 +279,7 @@ def evaluate(model, dataloader, device, amp, experiment, epoch, logging = False)
         columns = ["epoch", "image_id", "image", "bceLoss", "diceLoss", "f1_score", "iouScore", "accuracy", "precision",]
         test_table = wandb.Table(columns=columns)
         
-        artifact = wandb.Artifact("test_preds", type="raw_data")
+#         artifact = wandb.Artifact("test_preds", type="raw_data")
     
     num_val_batches = len(dataloader)
     bce_loss = 0
@@ -373,10 +373,10 @@ def evaluate(model, dataloader, device, amp, experiment, epoch, logging = False)
     
     if logging:
         try:
-            artifact.add(test_table, "test_predictions")
-            experiment.log_artifact(artifact)
+#             artifact.add(test_table, "test_predictions")
+#             experiment.log_artifact(artifact)
             del test_table
-            del artifact
+#             del artifact
             
             experiment.log({
                 'ave_validation Loss': g_bce_loss + g_dice_loss,
