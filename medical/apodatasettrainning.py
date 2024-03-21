@@ -381,7 +381,7 @@ def evaluate(model, dataloader, device, amp, experiment, epoch, logging = False)
         try:
             if logArt:
                 artifact.add(test_table, "test_predictions")
-                experiment.log_artifact(artifact)
+#                 experiment.log_artifact(artifact)
                 del test_table
                 del artifact
             
