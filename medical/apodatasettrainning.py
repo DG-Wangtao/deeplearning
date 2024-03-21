@@ -9,6 +9,7 @@
 # %% [code]
 # %% [code]
 # %% [code]
+# %% [code]
 # !pip install scipy scikit-image torch torchvision pathlib wandb segmentation-models-pytorch
 # !pip install wandb
 # !pip install wandb --upgrade
@@ -272,19 +273,10 @@ def showImage(loader):
 
 
 @torch.inference_mode()
-def evaluate(model, dataloader, device, amp, experiment, epoch, logging = False):
+def evaluate(model, dataloader, device, amp, experiment, test_table, epoch):
     class_labels= { 1: "target" }
     model.eval()
-    
-    logArt = False
-    if epoch % 20 == 0:
-        logArt = True
 
-    if logging:
-        if logArt:
-            columns = ["epoch", "image_id", "image", "bceLoss", "diceLoss", "f1_score", "iouScore", "accuracy", "precision",]
-            test_table = wandb.Table(columns=columns)
-            artifact = wandb.Artifact("test_preds", type="raw_data")
     
     num_val_batches = len(dataloader)
     bce_loss = 0
@@ -352,20 +344,18 @@ def evaluate(model, dataloader, device, amp, experiment, epoch, logging = False)
             
             pbar.update(images.shape[0])
             
-            if logging:
-                if logArt:
-                    test_table.add_data(epoch, idx, 
-                                    wandb.Image(images[0].cpu().numpy(),
-                                        masks = { 
-                                            "predictions": {
-                                                "mask_data": mask_pred[0][0].cpu().numpy(), "class_labels": class_labels
-                                            },
-                                            "ground_truth": {
-                                                "mask_data": mask_true[0][0].cpu().numpy(), "class_labels": class_labels
-                                            },
-                                    }),
-                                    bce_loss, dice_loss, f1_score,
-                                    iou_score, accuracy, precision)
+            test_table.add_data(epoch, idx, 
+                                wandb.Image(images[0].cpu().numpy(),
+                                    masks = { 
+                                        "predictions": {
+                                            "mask_data": mask_pred[0][0].cpu().numpy(), "class_labels": class_labels
+                                        },
+                                        "ground_truth": {
+                                            "mask_data": mask_true[0][0].cpu().numpy(), "class_labels": class_labels
+                                        },
+                                }),
+                                bce_loss, dice_loss, f1_score,
+                                iou_score, accuracy, precision)
 
         g_bce_loss = (g_bce_loss / max(num_val_batches, 1))
         g_dice_loss = (g_dice_loss / max(num_val_batches, 1))
@@ -379,25 +369,18 @@ def evaluate(model, dataloader, device, amp, experiment, epoch, logging = False)
         del mask_true
         pbar.set_postfix(**{"Validation bce loss": bce_loss, "dice loss": dice_loss, "IoU Score": iou_score})
     
-    if logging:
-        try:
-            if logArt:
-#                 artifact.add(test_table, "test_predictions")
-#                 experiment.log_artifact(artifact)
-                del test_table
-                del artifact
-            
-            experiment.log({
-                'ave_validation Loss': g_bce_loss + g_dice_loss,
-                'ave_accuracy': g_accuracy,
-                'ave_precision':g_precision,
-                'ave_f1_score':g_f1_score,
-                'ave_f2_score':g_f2_score,
-                'average validation IoU Score': g_iou_score,
-            })
-        except Exception as e:
-            print(e)
-            pass
+    try:
+        experiment.log({
+            'ave_validation Loss': g_bce_loss + g_dice_loss,
+            'ave_accuracy': g_accuracy,
+            'ave_precision':g_precision,
+            'ave_f1_score':g_f1_score,
+            'ave_f2_score':g_f2_score,
+            'average validation IoU Score': g_iou_score,
+        })
+    except Exception as e:
+        print(e)
+        pass
         
 
     return (dice_loss, iou_score)    
@@ -431,7 +414,9 @@ def train(model, device, project,
     experiment.config.update(
         dict(epochs=epochs, batch_size=batch_size, amp=True)
     )
-
+    columns = ["epoch", "image_id", "image", "bceLoss", "diceLoss", "f1_score", "iouScore", "accuracy", "precision",]
+    test_table = wandb.Table(columns=columns)
+    artifact = wandb.Artifact("test_preds", type="raw_data")
     
     logging.info(f'''Starting training:
         Epochs:          {epochs}
@@ -510,15 +495,17 @@ def train(model, device, project,
         
         # 每10个 epoch 更新一遍 wandb
         with torch.no_grad():
-            val_score, iou_score = evaluate(model, valloader, device, amp, experiment, epoch, logging = True)
+            val_score, iou_score = evaluate(model, valloader, device, amp, experiment, test_table, epoch)
 #         torch.set_grad_enabled(True)
 #         model.train()
 #         scheduler.step(val_score)
         
 #         gc.collect()
 #         torch.cuda.empty_cache()
-
+    experiment.log_artifact(artifact)
     experiment.finish()
+    del test_table
+    del artifact
 
 def LoopDataLoader(epochs, batch_size):
     trainloader, valloader = initDataLoader(batch_size)
