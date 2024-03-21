@@ -276,16 +276,15 @@ def evaluate(model, dataloader, device, amp, experiment, epoch, logging = False)
     class_labels= { 1: "target" }
     model.eval()
     
-    logArt = True
-    if epoch % 10 == 0:
+    logArt = False
+    if epoch % 20 == 0:
         logArt = True
 
     if logging:
         if logArt:
             columns = ["epoch", "image_id", "image", "bceLoss", "diceLoss", "f1_score", "iouScore", "accuracy", "precision",]
             test_table = wandb.Table(columns=columns)
-        
-            artifact = experiment.use_artifact("test_preds:latest")
+            artifact = wandb.Artifact("test_preds", type="raw_data")
     
     num_val_batches = len(dataloader)
     bce_loss = 0
@@ -383,7 +382,6 @@ def evaluate(model, dataloader, device, amp, experiment, epoch, logging = False)
             if logArt:
                 artifact.add(test_table, "test_predictions")
                 experiment.log_artifact(artifact)
-                artifact.wait()
                 del test_table
                 del artifact
             
@@ -458,45 +456,45 @@ def train(model, device, project,
     for epoch in range(1, epochs + 1):
         model.train()
         epoch_loss = 0
-        with tqdm(total=n_train, desc=f'Epoch {epoch}/{epochs}', unit='batch') as pbar:
-            for batch in trainloader:
-                images, true_masks = batch
+#         with tqdm(total=n_train, desc=f'Epoch {epoch}/{epochs}', unit='batch') as pbar:
+#             for batch in trainloader:
+#                 images, true_masks = batch
 
-                assert images.shape[1] == input_channels, \
-                    f'Network has been defined with {input_channels} input channels, ' \
-                    f'but loaded images have {images.shape[1]} channels. Please check that ' \
-                    'the images are loaded correctly.'
+#                 assert images.shape[1] == input_channels, \
+#                     f'Network has been defined with {input_channels} input channels, ' \
+#                     f'but loaded images have {images.shape[1]} channels. Please check that ' \
+#                     'the images are loaded correctly.'
 
-                images = images.to(device=device, dtype=torch.float32, memory_format=torch.channels_last)
+#                 images = images.to(device=device, dtype=torch.float32, memory_format=torch.channels_last)
                 
-                true_masks = true_masks.to(device=device, dtype=torch.long)
+#                 true_masks = true_masks.to(device=device, dtype=torch.long)
 
-                with torch.autocast(device.type if device.type != 'mps' else 'cpu', enabled=amp):
-                    masks_pred = model(images)
-                    loss = criterion(masks_pred, true_masks.float())
-                    loss += dice_loss(masks_pred, true_masks)
-                    tp, fp, fn, tn = smp.metrics.get_stats(masks_pred, true_masks.long(), mode='binary', threshold=0.5)
-                    iou_score = smp.metrics.iou_score(tp, fp, fn, tn, reduction="micro").item()
+#                 with torch.autocast(device.type if device.type != 'mps' else 'cpu', enabled=amp):
+#                     masks_pred = model(images)
+#                     loss = criterion(masks_pred, true_masks.float())
+#                     loss += dice_loss(masks_pred, true_masks)
+#                     tp, fp, fn, tn = smp.metrics.get_stats(masks_pred, true_masks.long(), mode='binary', threshold=0.5)
+#                     iou_score = smp.metrics.iou_score(tp, fp, fn, tn, reduction="micro").item()
     
-                optimizer.zero_grad(set_to_none=True)
-                grad_scaler.scale(loss).backward()
-                torch.nn.utils.clip_grad_norm_(model.parameters(), gradient_clipping)
-                grad_scaler.step(optimizer)
-                grad_scaler.update()
+#                 optimizer.zero_grad(set_to_none=True)
+#                 grad_scaler.scale(loss).backward()
+#                 torch.nn.utils.clip_grad_norm_(model.parameters(), gradient_clipping)
+#                 grad_scaler.step(optimizer)
+#                 grad_scaler.update()
 
-                pbar.update(images.shape[0])
-                global_step += 1
-                epoch_loss += loss.item()
-                pbar.set_postfix(**{'loss (batch)': epoch_loss/n_train})
+#                 pbar.update(images.shape[0])
+#                 global_step += 1
+#                 epoch_loss += loss.item()
+#                 pbar.set_postfix(**{'loss (batch)': epoch_loss/n_train})
                 
-                if global_step % 10 == 0:
-                    experiment.log({
-                        'learning rate': optimizer.param_groups[0]['lr'],
-                        'train iou': iou_score,
-                        'train loss': loss.item(),
-                        'step': global_step,
-                        'epoch': epoch
-                    })
+#                 if global_step % 10 == 0:
+#                     experiment.log({
+#                         'learning rate': optimizer.param_groups[0]['lr'],
+#                         'train iou': iou_score,
+#                         'train loss': loss.item(),
+#                         'step': global_step,
+#                         'epoch': epoch
+#                     })
 
            # Evaluation round
 #                 division_step = (n_train // batch_size)
@@ -511,9 +509,9 @@ def train(model, device, project,
         # 每10个 epoch 更新一遍 wandb
         with torch.no_grad():
             val_score, iou_score = evaluate(model, valloader, device, amp, experiment, epoch, logging = True)
-        torch.set_grad_enabled(True)
-        model.train()
-        scheduler.step(val_score)
+#         torch.set_grad_enabled(True)
+#         model.train()
+#         scheduler.step(val_score)
         
 #         gc.collect()
 #         torch.cuda.empty_cache()
