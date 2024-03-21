@@ -345,7 +345,7 @@ def evaluate(model, dataloader, device, amp, experiment, test_table, epoch):
             pbar.update(images.shape[0])
             
             test_table.add_data(epoch, idx, 
-                                wandb.Image(images[0].cpu().numpy(),
+                                wandb.Image(images[0].float().cpu(),
                                     masks = { 
                                         "predictions": {
                                             "mask_data": mask_pred[0][0].cpu().numpy(), "class_labels": class_labels
