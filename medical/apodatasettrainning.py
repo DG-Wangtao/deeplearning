@@ -355,14 +355,14 @@ def evaluate(model, dataloader, device, amp, experiment, epoch, logging = False)
             if logging:
                 if logArt:
                     test_table.add_data(epoch, idx, 
-                                    wandb.Image(images[0].float().cpu(),
-                                                masks = { 
-                                                    "predictions": {
-                                                        "mask_data": mask_pred[0][0].cpu().numpy(), "class_labels": class_labels
-                                                    },
-                                                    "ground_truth": {
-                                                        "mask_data": mask_true[0][0].cpu().numpy(), "class_labels": class_labels
-                                                    },
+                                    wandb.Image(images[0].cpu().numpy(),
+                                        masks = { 
+                                            "predictions": {
+                                                "mask_data": mask_pred[0][0].cpu().numpy(), "class_labels": class_labels
+                                            },
+                                            "ground_truth": {
+                                                "mask_data": mask_true[0][0].cpu().numpy(), "class_labels": class_labels
+                                            },
                                     }),
                                     bce_loss, dice_loss, f1_score,
                                     iou_score, accuracy, precision)
@@ -380,7 +380,7 @@ def evaluate(model, dataloader, device, amp, experiment, epoch, logging = False)
     if logging:
         try:
             if logArt:
-                artifact.add(test_table, "test_predictions")
+#                 artifact.add(test_table, "test_predictions")
 #                 experiment.log_artifact(artifact)
                 del test_table
                 del artifact
