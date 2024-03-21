@@ -375,6 +375,8 @@ def evaluate(model, dataloader, device, amp, experiment, epoch, logging = False)
         g_f1_score = (g_f1_score / max(num_val_batches, 1))
         g_f2_score= (g_f2_score / max(num_val_batches, 1))
 
+        del images
+        del mask_true
         pbar.set_postfix(**{"Validation bce loss": bce_loss, "dice loss": dice_loss, "IoU Score": iou_score})
     
     if logging:
