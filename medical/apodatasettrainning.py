@@ -8,6 +8,7 @@
 # %% [code]
 # %% [code]
 # %% [code]
+# %% [code]
 # !pip install scipy scikit-image torch torchvision pathlib wandb segmentation-models-pytorch
 # !pip install wandb
 # !pip install wandb --upgrade
@@ -275,8 +276,8 @@ def evaluate(model, dataloader, device, amp, experiment, epoch, logging = False)
     class_labels= { 1: "target" }
     model.eval()
     
-    logArt = False
-    if epoch % 20 == 0:
+    logArt = True
+    if epoch % 10 == 0:
         logArt = True
 
     if logging:
@@ -284,7 +285,7 @@ def evaluate(model, dataloader, device, amp, experiment, epoch, logging = False)
             columns = ["epoch", "image_id", "image", "bceLoss", "diceLoss", "f1_score", "iouScore", "accuracy", "precision",]
             test_table = wandb.Table(columns=columns)
         
-            artifact = wandb.Artifact("test_preds", type="raw_data")
+            artifact = experiment.use_artifact("test_preds")
     
     num_val_batches = len(dataloader)
     bce_loss = 0
@@ -382,6 +383,7 @@ def evaluate(model, dataloader, device, amp, experiment, epoch, logging = False)
             if logArt:
                 artifact.add(test_table, "test_predictions")
                 experiment.log_artifact(artifact)
+                artifact.wait()
                 del test_table
                 del artifact
             
@@ -513,7 +515,7 @@ def train(model, device, project,
         model.train()
         scheduler.step(val_score)
         
-        gc.collect()
+#         gc.collect()
 #         torch.cuda.empty_cache()
 
     experiment.finish()
