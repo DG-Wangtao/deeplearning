@@ -285,7 +285,7 @@ def evaluate(model, dataloader, device, amp, experiment, epoch, logging = False)
             columns = ["epoch", "image_id", "image", "bceLoss", "diceLoss", "f1_score", "iouScore", "accuracy", "precision",]
             test_table = wandb.Table(columns=columns)
         
-            artifact = experiment.use_artifact("test_preds")
+            artifact = experiment.use_artifact("test_preds:latest")
     
     num_val_batches = len(dataloader)
     bce_loss = 0
