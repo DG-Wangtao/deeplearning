@@ -1,3 +1,4 @@
+# %% [code]
 # !pip install scipy scikit-image torch torchvision pathlib wandb segmentation-models-pytorch
 # !pip install wandb
 # !pip install wandb --upgrade
@@ -13,7 +14,6 @@ plt.style.use("ggplot")
 import torch
 import torch.nn as nn
 from torchvision import models, transforms
-from torchvision.transforms import v2
 from torch.nn.functional import relu, pad
 from torch.utils.data import Dataset, DataLoader, random_split
 
