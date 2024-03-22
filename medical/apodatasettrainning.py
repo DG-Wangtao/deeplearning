@@ -443,45 +443,45 @@ def train(model, device, project,
     for epoch in range(1, epochs + 1):
         model.train()
         epoch_loss = 0
-#         with tqdm(total=n_train, desc=f'Epoch {epoch}/{epochs}', unit='batch') as pbar:
-#             for batch in trainloader:
-#                 images, true_masks = batch
+        with tqdm(total=n_train, desc=f'Epoch {epoch}/{epochs}', unit='batch') as pbar:
+            for batch in trainloader:
+                images, true_masks = batch
 
-#                 assert images.shape[1] == input_channels, \
-#                     f'Network has been defined with {input_channels} input channels, ' \
-#                     f'but loaded images have {images.shape[1]} channels. Please check that ' \
-#                     'the images are loaded correctly.'
+                assert images.shape[1] == input_channels, \
+                    f'Network has been defined with {input_channels} input channels, ' \
+                    f'but loaded images have {images.shape[1]} channels. Please check that ' \
+                    'the images are loaded correctly.'
 
-#                 images = images.to(device=device, dtype=torch.float32, memory_format=torch.channels_last)
+                images = images.to(device=device, dtype=torch.float32, memory_format=torch.channels_last)
                 
-#                 true_masks = true_masks.to(device=device, dtype=torch.long)
+                true_masks = true_masks.to(device=device, dtype=torch.long)
 
-#                 with torch.autocast(device.type if device.type != 'mps' else 'cpu', enabled=amp):
-#                     masks_pred = model(images)
-#                     loss = criterion(masks_pred, true_masks.float())
-#                     loss += dice_loss(masks_pred, true_masks)
-#                     tp, fp, fn, tn = smp.metrics.get_stats(masks_pred, true_masks.long(), mode='binary', threshold=0.5)
-#                     iou_score = smp.metrics.iou_score(tp, fp, fn, tn, reduction="micro").item()
+                with torch.autocast(device.type if device.type != 'mps' else 'cpu', enabled=amp):
+                    masks_pred = model(images)
+                    loss = criterion(masks_pred, true_masks.float())
+                    loss += dice_loss(masks_pred, true_masks)
+                    tp, fp, fn, tn = smp.metrics.get_stats(masks_pred, true_masks.long(), mode='binary', threshold=0.5)
+                    iou_score = smp.metrics.iou_score(tp, fp, fn, tn, reduction="micro").item()
     
-#                 optimizer.zero_grad(set_to_none=True)
-#                 grad_scaler.scale(loss).backward()
-#                 torch.nn.utils.clip_grad_norm_(model.parameters(), gradient_clipping)
-#                 grad_scaler.step(optimizer)
-#                 grad_scaler.update()
+                optimizer.zero_grad(set_to_none=True)
+                grad_scaler.scale(loss).backward()
+                torch.nn.utils.clip_grad_norm_(model.parameters(), gradient_clipping)
+                grad_scaler.step(optimizer)
+                grad_scaler.update()
 
-#                 pbar.update(images.shape[0])
-#                 global_step += 1
-#                 epoch_loss += loss.item()
-#                 pbar.set_postfix(**{'loss (batch)': epoch_loss/n_train})
+                pbar.update(images.shape[0])
+                global_step += 1
+                epoch_loss += loss.item()
+                pbar.set_postfix(**{'loss (batch)': epoch_loss/n_train})
                 
-#                 if global_step % 10 == 0:
-#                     experiment.log({
-#                         'learning rate': optimizer.param_groups[0]['lr'],
-#                         'train iou': iou_score,
-#                         'train loss': loss.item(),
-#                         'step': global_step,
-#                         'epoch': epoch
-#                     })
+                if global_step % 10 == 0:
+                    experiment.log({
+                        'learning rate': optimizer.param_groups[0]['lr'],
+                        'train iou': iou_score,
+                        'train loss': loss.item(),
+                        'step': global_step,
+                        'epoch': epoch
+                    })
 
            # Evaluation round
 #                 division_step = (n_train // batch_size)
@@ -496,11 +496,11 @@ def train(model, device, project,
         # 每10个 epoch 更新一遍 wandb
         with torch.no_grad():
             val_score, iou_score = evaluate(model, valloader, device, amp, experiment, test_table, epoch)
-#         torch.set_grad_enabled(True)
-#         model.train()
-#         scheduler.step(val_score)
+        torch.set_grad_enabled(True)
+        model.train()
+        scheduler.step(val_score)
         
-#         gc.collect()
+        gc.collect()
 #         torch.cuda.empty_cache()
     experiment.log_artifact(artifact)
     experiment.finish()
