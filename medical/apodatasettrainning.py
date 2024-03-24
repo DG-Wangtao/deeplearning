@@ -1,5 +1,4 @@
 # %% [code]
-# %% [code]
 # !pip install scipy scikit-image torch torchvision pathlib wandb segmentation-models-pytorch
 # !pip install wandb
 # !pip install wandb --upgrade
@@ -14,9 +13,10 @@ plt.style.use("ggplot")
 
 import torch
 import torch.nn as nn
-from torchvision import models, transforms
+from torchvision import models, transforms, utils
 from torch.nn.functional import relu, pad
 from torch.utils.data import Dataset, DataLoader, random_split
+
 
 from PIL import Image
 from typing import Tuple
@@ -189,8 +189,8 @@ class EnhanceDataSet(Dataset):
 #     return images, masks
 
 def initDataLoader(batch_size, size= [512, 512]):
-    dataset =  APODataSet(img_dir = "/kaggle/input/dltrack/apo_images",
-                          mask_dir = "/kaggle/input/dltrack/apo_masks",
+    dataset =  APODataSet(img_dir = "dltrack/apo_images",
+                          mask_dir = "dltrack/apo_masks",
                          size = size)
 
     total = len(dataset)
@@ -218,11 +218,11 @@ def initDataLoader(batch_size, size= [512, 512]):
 
     trainloader = DataLoader(dataset=train_data,
                                          batch_size=batch_size,
-                                         num_workers=0, 
+                                         num_workers=4, 
                                          shuffle=True)
     valloader = DataLoader(dataset=validate_data,
                                         batch_size=1, 
-                                        num_workers=0,
+                                        num_workers=1,
                                         shuffle=False)
     return trainloader, valloader
 
@@ -258,15 +258,35 @@ def showImage(loader):
 
     plt.show()
 
-
+ 
+def save_image_tensor(input_tensor: torch.Tensor, filename):
+    """
+    将tensor保存为图片
+    :param input_tensor: 要保存的tensor
+    :param filename: 保存的文件名
+    """
+    # 复制一份
+    input_tensor = input_tensor.clone().detach()
+    # 到cpu
+    input_tensor = input_tensor.to(torch.device('cpu'))
+    # 反归一化
+    # input_tensor = unnormalize(input_tensor)
+    utils.save_image(input_tensor, filename)
 
 
 @torch.inference_mode()
-def evaluate(model, dataloader, device, amp, experiment, test_table, epoch):
+def evaluate(model, dataloader, device, amp, experiment, epoch):
     class_labels= { 1: "target" }
     model.eval()
-
     
+    columns = ["epoch", "image_id", "image", "bceLoss", "diceLoss", "f1_score", "iouScore", "accuracy", "precision",]
+    test_table = wandb.Table(columns=columns)
+
+#     os.makedirs("outputs/images/epoch_{}".format(epoch), exist_ok=True)
+#     os.makedirs("outputs/masks/epoch_{}".format(epoch), exist_ok=True)
+#     os.makedirs("outputs/labels/epoch_{}".format(epoch), exist_ok=True)
+    
+        
     num_val_batches = len(dataloader)
     bce_loss = 0
     dice_loss = 0
@@ -332,9 +352,12 @@ def evaluate(model, dataloader, device, amp, experiment, test_table, epoch):
             g_precision += precision
             
             pbar.update(images.shape[0])
-            
-            test_table.add_data(epoch, idx, 
-                                wandb.Image(images[0].float().cpu(),
+#             save_image_tensor(images[0], "outputs/images/epoch_{}/{}.jpg".format(epoch, idx))
+#             save_image_tensor(mask_pred[0][0], "outputs/masks/epoch_{}/{}.jpg".format(epoch, idx))
+#             save_image_tensor(mask_true[0][0], "outputs/labels/epoch_{}/{}.jpg".format(epoch, idx))
+            if logArt:
+                test_table.add_data(epoch, idx, 
+                                wandb.Image(images[0][0].cpu().numpy(),
                                     masks = { 
                                         "predictions": {
                                             "mask_data": mask_pred[0][0].cpu().numpy(), "class_labels": class_labels
@@ -359,18 +382,21 @@ def evaluate(model, dataloader, device, amp, experiment, test_table, epoch):
         pbar.set_postfix(**{"Validation bce loss": bce_loss, "dice loss": dice_loss, "IoU Score": iou_score})
     
     try:
-        experiment.log({
+        experiment.log(data = {
             'ave_validation Loss': g_bce_loss + g_dice_loss,
             'ave_accuracy': g_accuracy,
             'ave_precision':g_precision,
             'ave_f1_score':g_f1_score,
             'ave_f2_score':g_f2_score,
             'average validation IoU Score': g_iou_score,
-        })
+            'test_predicts': test_table,
+            }, commit=True
+        )
+        
     except Exception as e:
         print(e)
         pass
-        
+
 
     return (dice_loss, iou_score)    
 
@@ -383,7 +409,8 @@ def train(model, device, project,
           batch_size: int = 6,
           amp: bool = False,
           gradient_clipping: float = 1.0):
-    
+
+
     trainloader, valloader = initDataLoader(batch_size)
     n_train = len(trainloader.dataset)
     n_val = len(valloader.dataset)
@@ -399,13 +426,11 @@ def train(model, device, project,
         
 
     # (Initialize logging)
+    wandb.login(verify=True)
     experiment = wandb.init(project=project, job_type="upload", resume='allow', anonymous='must', notes='水平和垂直翻转，旋转(-10,10)度，mixcut')
     experiment.config.update(
         dict(epochs=epochs, batch_size=batch_size, amp=True)
     )
-    columns = ["epoch", "image_id", "image", "bceLoss", "diceLoss", "f1_score", "iouScore", "accuracy", "precision",]
-    test_table = wandb.Table(columns=columns)
-    artifact = wandb.Artifact("test_preds", type="raw_data")
     
     logging.info(f'''Starting training:
         Epochs:          {epochs}
@@ -472,29 +497,18 @@ def train(model, device, project,
                         'epoch': epoch
                     })
 
-           # Evaluation round
-#                 division_step = (n_train // batch_size)
-#                 if division_step > 0:
-#                     if global_step % division_step == 0:
-#                         with torch.no_grad():
-#                             val_score, iou_score = evaluate(model, valloader, device, amp, experiment, epoch, test_table, logging = False)
-#                         torch.set_grad_enabled(True)
-#                         model.train()
-#                         scheduler.step(val_score)
-        
         # 每10个 epoch 更新一遍 wandb
         with torch.no_grad():
-            val_score, iou_score = evaluate(model, valloader, device, amp, experiment, test_table, epoch)
+            val_score, iou_score = evaluate(model, valloader, device, amp, experiment, epoch)
         torch.set_grad_enabled(True)
         model.train()
         scheduler.step(val_score)
         
         gc.collect()
 #         torch.cuda.empty_cache()
-    experiment.log_artifact(artifact)
+
     experiment.finish()
-    del test_table
-    del artifact
+
 
 def LoopDataLoader(epochs, batch_size):
     trainloader, valloader = initDataLoader(batch_size)
