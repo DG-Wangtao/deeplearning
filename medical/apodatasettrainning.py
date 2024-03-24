@@ -1,5 +1,6 @@
 # %% [code]
 # %% [code]
+# %% [code]
 # !pip install scipy scikit-image torch torchvision pathlib wandb segmentation-models-pytorch
 # !pip install wandb
 # !pip install wandb --upgrade
@@ -356,8 +357,7 @@ def evaluate(model, dataloader, device, amp, experiment, epoch):
 #             save_image_tensor(images[0], "outputs/images/epoch_{}/{}.jpg".format(epoch, idx))
 #             save_image_tensor(mask_pred[0][0], "outputs/masks/epoch_{}/{}.jpg".format(epoch, idx))
 #             save_image_tensor(mask_true[0][0], "outputs/labels/epoch_{}/{}.jpg".format(epoch, idx))
-            if logArt:
-                test_table.add_data(epoch, idx, 
+            test_table.add_data(epoch, idx, 
                                 wandb.Image(images[0][0].cpu().numpy(),
                                     masks = { 
                                         "predictions": {
