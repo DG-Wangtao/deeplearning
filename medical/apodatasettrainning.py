@@ -1,4 +1,5 @@
 # %% [code]
+# %% [code]
 # !pip install scipy scikit-image torch torchvision pathlib wandb segmentation-models-pytorch
 # !pip install wandb
 # !pip install wandb --upgrade
@@ -189,8 +190,8 @@ class EnhanceDataSet(Dataset):
 #     return images, masks
 
 def initDataLoader(batch_size, size= [512, 512]):
-    dataset =  APODataSet(img_dir = "dltrack/apo_images",
-                          mask_dir = "dltrack/apo_masks",
+    dataset =  APODataSet(img_dir = "/kaggle/input/dltrack/apo_images",
+                          mask_dir = "/kaggle/input/dltrack/apo_masks",
                          size = size)
 
     total = len(dataset)
