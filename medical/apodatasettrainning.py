@@ -1,6 +1,4 @@
 # %% [code]
-# %% [code]
-# %% [code]
 # !pip install scipy scikit-image torch torchvision pathlib wandb segmentation-models-pytorch
 # !pip install wandb
 # !pip install wandb --upgrade
@@ -17,7 +15,7 @@ import torch
 import torch.nn as nn
 from torchvision import models, transforms, utils
 from torch.nn.functional import relu, pad
-from torch.utils.data import Dataset, DataLoader, random_split
+from torch.utils.data import Dataset, DataLoader, Subset
 
 
 from PIL import Image
@@ -41,10 +39,13 @@ from datetime import datetime
 import gc 
 
 
+def load_image(path) -> Image.Image:
+    return Image.open(path)
+
 # TODO: image和mask名称不一样时跳过
 class APODataSet(Dataset):
     # 格式不对的异常数据
-    def __init__(self, img_dir, mask_dir: str, size) -> None:
+    def __init__(self, img_dir, mask_dir: str) -> None:
         # 获取所有图片路径
         img_paths = list(Path(img_dir).glob("*"))
         mask_paths = list(Path(mask_dir).glob("*"))
@@ -52,7 +53,7 @@ class APODataSet(Dataset):
         self.masks = []
         for img_idx in range(len(img_paths)):
             img_path = img_paths[img_idx]
-            img = self.load_image(img_path)
+            img = load_image(img_path)
             num_channels = len(img.getbands())
             if num_channels != 3:
                 continue
@@ -60,82 +61,73 @@ class APODataSet(Dataset):
             mask_path = mask_paths[img_idx]
             self.images.append(img_path)
             self.masks.append(mask_path)
-            
-        self.transform = transforms.Compose([ transforms.Resize(size), transforms.ToTensor()])
+
         self.images = np.array(self.images)
         self.masks = np.array(self.masks)
 
-    def load_image(self, path) -> Image.Image:
-        "Opens an image via a path and returns it."
-        return Image.open(path)
-    
-    #  重写 __len__() 方法 (optional but recommended for subclasses of torch.utils.data.Dataset)
     def __len__(self) -> int:
-        "Returns the total number of samples."
         return len(self.images)
 
-    # 重写 __getitem__() 方法 (required for subclasses of torch.utils.data.Dataset)
     def __getitem__(self, index: int) -> Tuple[torch.Tensor, torch.Tensor]:
         return self.images[index], self.masks[index]
 
-class EnhanceDataSet(Dataset):
-    def __init__(self, dataset, size, transform, cutmix):
-        self.size = size
-        self.dataset = dataset
-        self.transform = transform
-        self.cutmix = cutmix
-#         transforms.Compose([ 
-#                 transforms.Resize(size),
-#                 transforms.RandomHorizontalFlip(),  # 随机水平翻转
-#                 transforms.RandomVerticalFlip(),    # 随机垂直旋转
-#                 transforms.RandomRotation(10) ,     # 随机旋转 （-10,10）度
-#                 transforms.ToTensor()
-#         ])
 
-    def load_image(self, path) -> Image.Image:
-        "Opens an image via a path and returns it."
-        return Image.open(path)
+# class EnhanceDataSet(Dataset):
+#     def __init__(self, dataset, size, transform, cutmix):
+#         self.size = size
+#         self.dataset = dataset
+#         self.transform = transform
+#         self.cutmix = cutmix
+# #         transforms.Compose([ 
+# #                 transforms.Resize(size),
+# #                 transforms.RandomHorizontalFlip(),  # 随机水平翻转
+# #                 transforms.RandomVerticalFlip(),    # 随机垂直旋转
+# #                 transforms.RandomRotation(10) ,     # 随机旋转 （-10,10）度
+# #                 transforms.ToTensor()
+# #         ])
+
+
     
     
-    def __getitem__(self, index):
-        imag_path, mask_path = self.dataset[index]
-        image = self.load_image(imag_path)
-        mask = self.load_image(mask_path)
+#     def __getitem__(self, index):
+#         imag_path, mask_path = self.dataset[index]
+#         image = self.load_image(imag_path)
+#         mask = self.load_image(mask_path)
 
-        seed = np.random.randint(2147483647)
-        torch.manual_seed(seed)
-        image = self.transform(image)
-        torch.manual_seed(seed)
-        mask = self.transform(mask)
+#         seed = np.random.randint(2147483647)
+#         torch.manual_seed(seed)
+#         image = self.transform(image)
+#         torch.manual_seed(seed)
+#         mask = self.transform(mask)
         
-        # cut mix
-        if self.cutmix:
-            rand_index = random.randint(0, len(self.dataset)-1)
-            rand_imag_path, rand_mask_path = self.dataset[rand_index]
-            rand_img = self.load_image(rand_imag_path)
-            rand_mask = self.load_image(rand_mask_path)
+#         # cut mix
+#         if self.cutmix:
+#             rand_index = random.randint(0, len(self.dataset)-1)
+#             rand_imag_path, rand_mask_path = self.dataset[rand_index]
+#             rand_img = self.load_image(rand_imag_path)
+#             rand_mask = self.load_image(rand_mask_path)
 
-#             seed = np.random.randint(2147483647)
-            torch.manual_seed(seed)
-            rand_img = self.transform(rand_img)
-            torch.manual_seed(seed)
-            rand_mask = self.transform(rand_mask)
+# #             seed = np.random.randint(2147483647)
+#             torch.manual_seed(seed)
+#             rand_img = self.transform(rand_img)
+#             torch.manual_seed(seed)
+#             rand_mask = self.transform(rand_mask)
 
-            lam = np.random.beta(1., 1.)
-            bbx1, bby1, bbx2, bby2 = self.rand_bbox(rand_mask.size(), lam)
+#             lam = np.random.beta(1., 1.)
+#             bbx1, bby1, bbx2, bby2 = self.rand_bbox(rand_mask.size(), lam)
 
-            image[:, bbx1:bbx2, bby1:bby2] = rand_img[:, bbx1:bbx2, bby1:bby2]
-            mask[:, bbx1:bbx2, bby1:bby2] = rand_mask[:, bbx1:bbx2, bby1:bby2]
+#             image[:, bbx1:bbx2, bby1:bby2] = rand_img[:, bbx1:bbx2, bby1:bby2]
+#             mask[:, bbx1:bbx2, bby1:bby2] = rand_mask[:, bbx1:bbx2, bby1:bby2]
     
-        mask = torch.where(mask>0.5,torch.ones_like(mask),torch.zeros_like(mask))
+#         mask = torch.where(mask>0.5,torch.ones_like(mask),torch.zeros_like(mask))
         
-        return image.numpy(), mask.numpy()
+#         return image.numpy(), mask.numpy()
         
-    def __len__(self):
-        return len(self.dataset)
+#     def __len__(self):
+#         return len(self.dataset)
     
-    #  CutMix 的切块功能
-    def rand_bbox(self, size, lam):
+#  CutMix 的切块功能
+def rand_bbox(size, lam):
         W = size[1]
         H = size[2]
         cut_rat = np.sqrt(1. - lam)
@@ -154,78 +146,104 @@ class EnhanceDataSet(Dataset):
         return bbx1, bby1, bbx2, bby2
 
 
-# def train_collate_fn(batch):
-#     size = [512, 512]
-#     trans = transforms.Compose([ 
-#                 transforms.RandomHorizontalFlip(),  # 随机水平翻转
-#                 transforms.RandomVerticalFlip(),    # 随机垂直旋转
-#                 transforms.RandomRotation(10) ,     # 随机旋转 （-10,10）度
-#     ])
+def train_collate_fn(batch):
+    size = [512, 512]
+    trans = transforms.Compose([ 
+                transforms.Resize(size),
+                transforms.RandomHorizontalFlip(),  # 随机水平翻转
+                transforms.RandomVerticalFlip(),    # 随机垂直旋转
+                transforms.RandomRotation(10) ,     # 随机旋转 （-10,10）度
+                transforms.ToTensor()
+    ])
     
-#     images = torch.empty(len(batch), 3, size[0], size[1])
-#     masks = torch.empty(len(batch),1, size[0], size[1])
+    images = torch.empty(len(batch), 3, size[0], size[1])
+    masks = torch.empty(len(batch),1, size[0], size[1])
     
     
-#     for i in range(len(batch)):
-#         image, mask = batch[i]
-#         seed = np.random.randint(2147483647)
-#         torch.manual_seed(seed)
-#         image = trans(image)
-#         torch.manual_seed(seed)
-#         mask = trans(mask)
+    for i in range(len(batch)):
+        imag_path, mask_path = batch[i]
+        image = load_image(imag_path)
+        mask = load_image(mask_path)
+        
+        seed = np.random.randint(2147483647)
+        torch.manual_seed(seed)
+        image = trans(image)
+        torch.manual_seed(seed)
+        mask = trans(mask)
 
         
-#         # cut mix
-#         rand_index = random.randint(0, len(batch)-1)
-#         rand_img, rand_mask = batch[rand_index]
+        # cut mix
+        rand_index = random.randint(0, len(batch)-1)
+        rand_img_path, rand_mask_path = batch[rand_index]
+        rand_img = load_image(rand_img_path)
+        rand_mask = load_image(rand_mask_path)
 
-#         lam = np.random.beta(1., 1.)
-#         bbx1, bby1, bbx2, bby2 = rand_bbox(rand_mask.size(), lam)
+        torch.manual_seed(seed)
+        rand_img = trans(rand_img)
+        torch.manual_seed(seed)
+        rand_mask = trans(rand_mask)
 
-#         image[:, bbx1:bbx2, bby1:bby2] = rand_img[:, bbx1:bbx2, bby1:bby2]
-#         mask[:, bbx1:bbx2, bby1:bby2] = rand_mask[:, bbx1:bbx2, bby1:bby2]
+
+        lam = np.random.beta(1., 1.)
+        bbx1, bby1, bbx2, bby2 = rand_bbox(rand_mask.size(), lam)
+
+        image[:, bbx1:bbx2, bby1:bby2] = rand_img[:, bbx1:bbx2, bby1:bby2]
+        mask[:, bbx1:bbx2, bby1:bby2] = rand_mask[:, bbx1:bbx2, bby1:bby2]
+        mask = torch.where(mask>0.5,torch.ones_like(mask),torch.zeros_like(mask))
         
-#         images[i] = image
-#         masks[i] = mask
+        images[i] = image
+        masks[i] = mask
     
-#     return images, masks
+    return images, masks
+    
+def test_collate_fn(batch):
+    size = [512, 512]
+    trans = transforms.Compose([ transforms.Resize(size), transforms.ToTensor() ])
+    
+    images = torch.empty(len(batch), 3, size[0], size[1])
+    masks = torch.empty(len(batch),1, size[0], size[1])
+    
+    
+    for i in range(len(batch)):
+        imag_path, mask_path = batch[i]
+        image = load_image(imag_path)
+        mask = load_image(mask_path)
+        
+        image = trans(image)
+        mask = trans(mask)
+
+        mask = torch.where(mask>0.5,torch.ones_like(mask),torch.zeros_like(mask))
+        
+        images[i] = image
+        masks[i] = mask
+    
+    return images, masks
+
 
 def initDataLoader(batch_size, size= [512, 512]):
     dataset =  APODataSet(img_dir = "/kaggle/input/dltrack/apo_images",
-                          mask_dir = "/kaggle/input/dltrack/apo_masks",
-                         size = size)
+                          mask_dir = "/kaggle/input/dltrack/apo_masks")
 
     total = len(dataset)
     train_size = int(0.8*total)
     validate_size = total - train_size
 
-    train_data, validate_data = random_split(dataset, [train_size, validate_size])
-    train_data = EnhanceDataSet(dataset = train_data, size = size, transform = 
-                                        transforms.Compose([ 
-                                            transforms.Resize(size),
-                                            transforms.RandomHorizontalFlip(),  # 随机水平翻转
-                                            transforms.RandomVerticalFlip(),    # 随机垂直旋转
-                                            transforms.RandomRotation(10) ,     # 随机旋转 （-10,10）度
-                                            transforms.ToTensor()
-                                    ]), cutmix = True
-                               )
+    # 前80%训练，后20%测试
+    train_data = Subset(dataset, range(0, train_size))
+    validate_data = Subset(dataset, range(train_size, total))
     
-    validate_data = EnhanceDataSet(dataset = validate_data, size = size, transform = 
-                                        transforms.Compose([ 
-                                            transforms.Resize(size),
-                                            transforms.ToTensor()
-                                    ]), cutmix = False
-                               )
     print("dataset info\ntotal: {}, train_size: {}, validate_size: {}".format(total, len(train_data), len(validate_data)))
 
-    trainloader = DataLoader(dataset=train_data,
-                                         batch_size=batch_size,
-                                         num_workers=4, 
-                                         shuffle=True)
-    valloader = DataLoader(dataset=validate_data,
-                                        batch_size=1, 
-                                        num_workers=1,
-                                        shuffle=False)
+    trainloader = DataLoader(dataset=train_data, 
+                                     collate_fn = train_collate_fn,
+                                     batch_size=batch_size,
+                                     num_workers=4, 
+                                     shuffle=True)
+    valloader = DataLoader(dataset=validate_data, 
+                                   collate_fn = test_collate_fn,
+                                   batch_size=1, 
+                                   num_workers=1,
+                                   shuffle=False)
     return trainloader, valloader
 
 
@@ -260,7 +278,7 @@ def showImage(loader):
 
     plt.show()
 
- 
+
 def save_image_tensor(input_tensor: torch.Tensor, filename):
     """
     将tensor保存为图片
@@ -284,9 +302,9 @@ def evaluate(model, dataloader, device, amp, experiment, epoch):
     columns = ["epoch", "image_id", "image", "bceLoss", "diceLoss", "f1_score", "iouScore", "accuracy", "precision",]
     test_table = wandb.Table(columns=columns)
 
-#     os.makedirs("outputs/images/epoch_{}".format(epoch), exist_ok=True)
-#     os.makedirs("outputs/masks/epoch_{}".format(epoch), exist_ok=True)
-#     os.makedirs("outputs/labels/epoch_{}".format(epoch), exist_ok=True)
+    # os.makedirs("outputs/images/epoch_{}".format(epoch), exist_ok=True)
+    # os.makedirs("outputs/masks/epoch_{}".format(epoch), exist_ok=True)
+    # os.makedirs("outputs/labels/epoch_{}".format(epoch), exist_ok=True)
     
         
     num_val_batches = len(dataloader)
@@ -354,9 +372,10 @@ def evaluate(model, dataloader, device, amp, experiment, epoch):
             g_precision += precision
             
             pbar.update(images.shape[0])
-#             save_image_tensor(images[0], "outputs/images/epoch_{}/{}.jpg".format(epoch, idx))
-#             save_image_tensor(mask_pred[0][0], "outputs/masks/epoch_{}/{}.jpg".format(epoch, idx))
-#             save_image_tensor(mask_true[0][0], "outputs/labels/epoch_{}/{}.jpg".format(epoch, idx))
+            # save_image_tensor(images[0], "outputs/images/epoch_{}/{}.jpg".format(epoch, idx))
+            # save_image_tensor(mask_pred[0][0], "outputs/masks/epoch_{}/{}.jpg".format(epoch, idx))
+            # save_image_tensor(mask_true[0][0], "outputs/labels/epoch_{}/{}.jpg".format(epoch, idx))
+
             test_table.add_data(epoch, idx, 
                                 wandb.Image(images[0][0].cpu().numpy(),
                                     masks = { 
@@ -391,7 +410,7 @@ def evaluate(model, dataloader, device, amp, experiment, epoch):
             'ave_f2_score':g_f2_score,
             'average validation IoU Score': g_iou_score,
             'test_predicts': test_table,
-            }, commit=True
+            }
         )
         
     except Exception as e:
@@ -417,7 +436,6 @@ def train(model, device, project,
     n_val = len(valloader.dataset)
     showImage(trainloader)
 
-
     if isinstance(model, nn.DataParallel):
         num_classes = model.module.num_classes
         input_channels = model.module.input_channels
@@ -427,7 +445,7 @@ def train(model, device, project,
         
 
     # (Initialize logging)
-    wandb.login(verify=True)
+    # wandb.login(verify=True)
     experiment = wandb.init(project=project, job_type="upload", resume='allow', anonymous='must', notes='水平和垂直翻转，旋转(-10,10)度，mixcut')
     experiment.config.update(
         dict(epochs=epochs, batch_size=batch_size, amp=True)
