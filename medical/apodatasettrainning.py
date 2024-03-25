@@ -1,4 +1,5 @@
 # %% [code]
+# %% [code]
 # !pip install scipy scikit-image torch torchvision pathlib wandb segmentation-models-pytorch
 # !pip install wandb
 # !pip install wandb --upgrade
@@ -237,7 +238,7 @@ def initDataLoader(batch_size, size= [512, 512]):
     trainloader = DataLoader(dataset=train_data, 
                                      collate_fn = train_collate_fn,
                                      batch_size=batch_size,
-                                     num_workers=4, 
+                                     num_workers=0, 
                                      shuffle=True)
     valloader = DataLoader(dataset=validate_data, 
                                    collate_fn = test_collate_fn,
