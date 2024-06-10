@@ -437,7 +437,7 @@ def train(model, device, project,
           mask_dir='/kaggle/input/dltrack/apo_masks'):
 
 
-    trainloader, valloader = initDataLoader(batch_size, img_dir, mask_dir)
+    trainloader, valloader = initDataLoader(batch_size=batch_size, img_dir=img_dir, mask_dir=mask_dir)
     n_train = len(trainloader.dataset)
     n_val = len(valloader.dataset)
     showImage(trainloader)
@@ -567,5 +567,6 @@ def StarTrain(project, model, epochs, batch_size, img_dir = "/kaggle/input/dltra
     print("其详情为：")
     for name,parameters in model.named_parameters():
         print(name,':',parameters.size())
-    train(model, device, project=project, epochs=epochs, batch_size=batch_size, img_dir=img_dir, mask_dir=mask_dir)
+    train(model, device, project=project, epochs=epochs, 
+          batch_size=batch_size, img_dir=img_dir, mask_dir=mask_dir)
     
