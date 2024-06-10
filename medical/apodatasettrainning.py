@@ -49,6 +49,8 @@ class APODataSet(Dataset):
     # 格式不对的异常数据
     def __init__(self, img_dir, mask_dir: str) -> None:
         # 获取所有图片路径
+        print("img dir: {}", img_dir)
+        print("mask dir: {}", mask_dir)
         img_paths = list(Path(img_dir).glob("*"))
         mask_paths = list(Path(mask_dir).glob("*"))
         self.images = []
@@ -58,6 +60,7 @@ class APODataSet(Dataset):
             img = load_image(img_path)
             num_channels = len(img.getbands())
             if num_channels != 3:
+                print("num_channels: {}", num_channels)
                 continue
             
             mask_path = mask_paths[img_idx]
