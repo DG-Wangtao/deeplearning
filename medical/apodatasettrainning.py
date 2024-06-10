@@ -569,4 +569,3 @@ def StarTrain(project, model, epochs, batch_size, img_dir = "/kaggle/input/dltra
         print(name,':',parameters.size())
     train(model, device, project=project, epochs=epochs, batch_size=batch_size, img_dir=img_dir, mask_dir=mask_dir)
     
-
