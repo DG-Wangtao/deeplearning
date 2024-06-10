@@ -226,7 +226,7 @@ def test_collate_fn(batch):
 
 
 def initDataLoader(batch_size, size= [512, 512], img_dir = "/kaggle/input/dltrack/apo_images", mask_dir = "/kaggle/input/dltrack/apo_masks"):
-    dataset =  APODataSet(img_dir, mask_dir)
+    dataset =  APODataSet(img_dir=img_dir, mask_dir=mask_dir)
 
     total = len(dataset)
     train_size = int(0.8*total)
