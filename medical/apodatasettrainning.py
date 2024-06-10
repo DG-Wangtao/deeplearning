@@ -1,5 +1,6 @@
 # %% [code]
 # %% [code]
+# %% [code]
 # !pip install scipy scikit-image torch torchvision pathlib wandb segmentation-models-pytorch
 # !pip install wandb
 # !pip install wandb --upgrade
@@ -221,9 +222,8 @@ def test_collate_fn(batch):
     return images, masks
 
 
-def initDataLoader(batch_size, size= [512, 512]):
-    dataset =  APODataSet(img_dir = "/kaggle/input/dltrack/apo_images",
-                          mask_dir = "/kaggle/input/dltrack/apo_masks")
+def initDataLoader(batch_size, size= [512, 512], img_dir = "/kaggle/input/dltrack/apo_images", mask_dir = "/kaggle/input/dltrack/apo_masks"):
+    dataset =  APODataSet(img_dir, mask_dir)
 
     total = len(dataset)
     train_size = int(0.8*total)
@@ -429,10 +429,11 @@ def train(model, device, project,
           momentum: float = 0.999,
           batch_size: int = 6,
           amp: bool = False,
-          gradient_clipping: float = 1.0):
+          gradient_clipping: float = 1.0,
+          img_dir, mask_dir):
 
 
-    trainloader, valloader = initDataLoader(batch_size)
+    trainloader, valloader = initDataLoader(batch_size, img_dir, mask_dir)
     n_train = len(trainloader.dataset)
     n_val = len(valloader.dataset)
     showImage(trainloader)
@@ -549,7 +550,7 @@ def LoopDataLoader(epochs, batch_size):
             images, true_masks = batch
         
 
-def StarTrain(project, model, epochs, batch_size):
+def StarTrain(project, model, epochs, batch_size, img_dir = "/kaggle/input/dltrack/apo_images", mask_dir = "/kaggle/input/dltrack/apo_masks"):
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     if torch.cuda.device_count() > 1:
         print("Let's use", torch.cuda.device_count(), "GPUs!")
@@ -562,5 +563,6 @@ def StarTrain(project, model, epochs, batch_size):
     print("其详情为：")
     for name,parameters in model.named_parameters():
         print(name,':',parameters.size())
-    train(model, device, project=project, epochs=epochs, batch_size=batch_size)
+    train(model, device, project=project, epochs=epochs, batch_size=batch_size, img_dir, mask_dir)
+    
 
