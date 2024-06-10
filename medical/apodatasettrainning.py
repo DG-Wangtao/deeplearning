@@ -60,7 +60,6 @@ class APODataSet(Dataset):
             img = load_image(img_path)
             num_channels = len(img.getbands())
             if num_channels != 3:
-                print("num_channels: {}", num_channels)
                 continue
             
             mask_path = mask_paths[img_idx]
