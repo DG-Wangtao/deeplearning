@@ -430,7 +430,8 @@ def train(model, device, project,
           batch_size: int = 6,
           amp: bool = False,
           gradient_clipping: float = 1.0,
-          img_dir, mask_dir):
+          img_dir='/kaggle/input/dltrack/apo_images',
+          mask_dir='/kaggle/input/dltrack/apo_masks'):
 
 
     trainloader, valloader = initDataLoader(batch_size, img_dir, mask_dir)
