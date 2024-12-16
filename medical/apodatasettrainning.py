@@ -1,7 +1,4 @@
-# %% [code]
-# %% [code]
-# %% [code]
-# %% [code]
+
 # %% [code]
 # !pip install scipy scikit-image torch torchvision pathlib wandb segmentation-models-pytorch
 # !pip install wandb
@@ -51,8 +48,8 @@ class APODataSet(Dataset):
     # 格式不对的异常数据
     def __init__(self, img_dir, mask_dir: str) -> None:
         # 获取所有图片路径
-        print("img dir: {}", img_dir)
-        print("mask dir: {}", mask_dir)
+        # print("img dir: {}", img_dir)
+        # print("mask dir: {}", mask_dir)
         img_paths = list(Path(img_dir).glob("*"))
         mask_paths = list(Path(mask_dir).glob("*"))
         self.images = []
@@ -510,16 +507,20 @@ def train(model, device, project,
                 grad_scaler.step(optimizer)
                 grad_scaler.update()
 
-                pbar.update(images.shape[0])
-                global_step += 1
+                epoch_num = epoch_num +1
                 epoch_loss += loss.item()
-                pbar.set_postfix(**{'loss (batch)': epoch_loss/n_train})
+                epoch_iou += iou_score
+                global_step += 1
+                pbar.update(images.shape[0])
+                
+                pbar.set_postfix(**{'loss (batch)': epoch_loss / epoch_num, "iou (batch)": epoch_iou / epoch_num })
+
                 
                 if global_step % 10 == 0:
                     experiment.log({
                         'learning rate': optimizer.param_groups[0]['lr'],
-                        'train iou': iou_score,
-                        'train loss': loss.item(),
+                        'train iou': epoch_iou / epoch_num,
+                        'train loss': epoch_loss / epoch_num,
                         'step': global_step,
                         'epoch': epoch
                     })
