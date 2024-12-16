@@ -1,6 +1,8 @@
 # %% [code]
 # %% [code]
 # %% [code]
+# %% [code]
+# %% [code]
 # !pip install scipy scikit-image torch torchvision pathlib wandb segmentation-models-pytorch
 # !pip install wandb
 # !pip install wandb --upgrade
@@ -224,7 +226,7 @@ def test_collate_fn(batch):
     return images, masks
 
 
-def initDataLoader(batch_size, size= [512, 512], img_dir = "/kaggle/input/dltrack/apo_images", mask_dir = "/kaggle/input/dltrack/apo_masks"):
+def initDataLoader(batch_size, size= [512, 512], img_dir = "/kaggle/input/dltrack/fasc_images_S", mask_dir = "/kaggle/input/dltrack/fasc_masks_S"):
     dataset =  APODataSet(img_dir=img_dir, mask_dir=mask_dir)
 
     total = len(dataset)
@@ -411,6 +413,7 @@ def evaluate(model, dataloader, device, amp, experiment, epoch):
             'ave_precision':g_precision,
             'ave_f1_score':g_f1_score,
             'ave_f2_score':g_f2_score,
+            'ave_dice_loss': g_dice_loss,
             'average validation IoU Score': g_iou_score,
             'test_predicts': test_table,
             }
@@ -432,8 +435,8 @@ def train(model, device, project,
           batch_size: int = 6,
           amp: bool = False,
           gradient_clipping: float = 1.0,
-          img_dir='/kaggle/input/dltrack/apo_images',
-          mask_dir='/kaggle/input/dltrack/apo_masks'):
+          img_dir='/kaggle/input/dltrack/fasc_images_S',
+          mask_dir='/kaggle/input/dltrack/fasc_masks_S'):
 
 
     trainloader, valloader = initDataLoader(batch_size=batch_size, img_dir=img_dir, mask_dir=mask_dir)
@@ -553,7 +556,7 @@ def LoopDataLoader(epochs, batch_size):
             images, true_masks = batch
         
 
-def StarTrain(project, model, epochs, batch_size, img_dir = "/kaggle/input/dltrack/apo_images", mask_dir = "/kaggle/input/dltrack/apo_masks"):
+def StarTrain(project, model, epochs, batch_size, img_dir = "/kaggle/input/dltrack/fasc_images_S", mask_dir = "/kaggle/input/dltrack/fasc_masks_S"):
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     if torch.cuda.device_count() > 1:
         print("Let's use", torch.cuda.device_count(), "GPUs!")
